@@ -1,0 +1,91 @@
+Release notes for the FujiNet fork.
+Based on upstream jzIntv 20200712 (SVN r2110).  See ReleaseNotes_20200712.txt
+and earlier ReleaseNotes_*.txt files for the upstream emulator's history.
+
+---------------
+ New features:
+---------------
+
+*   FujiNet mailbox peripheral (src/fujinet/)
+    *   Emulates the RP2040 side of the FujiNet-for-Intellivision bridge
+        (see fujinet-firmware/pico/intellivision/).  On real hardware, an
+        RP2040 cart exposes a "mailbox" register window in Intellivision
+        RAM and relays each transaction to a FujiNet (ESP32-S3) over USB
+        CDC as a SLIP-framed FujiBus packet.  jzIntv instead speaks the
+        same FujiBus frames over a TCP socket, using fujinet-firmware's
+        "Bus Over IP" (BoIP) feature -- a transparent byte stream with no
+        framing of its own, so the bytes on the wire are identical to
+        what the RP2040 would send over USB.  fujinet-firmware is the TCP
+        server; jzIntv is the client.
+    *   New command-line options:
+        *   --fujinet[=host[:port]]
+            Enable the FujiNet mailbox peripheral at $9C00-$9FFF,
+            connecting over BoIP to a fujinet-firmware instance.
+            Defaults to localhost:1985.  If no ROM is given on the
+            command line, boots the built-in FujiNet config ROM (WiFi
+            setup / host slots / directory browser) instead of looking
+            for game.rom; an explicit ROM argument always overrides
+            this.
+        *   --fujinet-debug
+            Trace FujiNet mailbox transactions and FujiBus frames to
+            stdout.
+        *   --fujinet-bootdump=PREFIX
+            The emulator can't reload the cart the way real RP2040
+            firmware does, so it can't complete a MOUNT_IMAGE boot --
+            but it can still receive the same DBC-addressed ROM/.cfg
+            push a real board would.  With this set, jzIntv writes what
+            it received to PREFIX.rom and, if a .cfg sibling was
+            pushed, PREFIX.cfg.
+    *   Embedded FujiNet config ROM (src/fujinet/fujinet_config_rom.c/h),
+        generated from the fujinet-config repo's intv/config.rom via
+        src/fujinet/mkconfigrom.py, so `--fujinet` works out of the box
+        with no external ROM file.
+    *   DBC (FUJI_DEVICEID_DBC) inbound-frame handling: when
+        fujinet-firmware pushes a ROM (and optional .cfg sibling)
+        mid-transaction -- the same push a real board receives --
+        jzIntv decodes it into the running icart_t and resets the
+        console, effectively hot-swapping the loaded cart.
+    *   New example: examples/fujinet/ (fujitest.bas / fujitest.rom),
+        a minimal FujiNet mailbox test program.
+
+----------
+ Changes:
+----------
+
+*   cfg/cfg.c, cfg/cfg.h, cfg/mapping.c, cfg/usage.c
+    *   Wired up FujiNet option parsing, peripheral registration at
+        $9C00-$9FFF, and boot-from-config-ROM handling.
+    *   Note: the FujiNet mailbox window overlaps the tail of the JLP RAM
+        window, so --jlp and --fujinet should not be combined in the same
+        session.
+*   icart/icart.c, icart/icart.h
+    *   Support for loading a cart from an in-memory buffer, used both by
+        the embedded config ROM and by DBC-pushed cart reloads.
+*   plat/plat_lib.c, jzintv.c, jzintv_em.c
+    *   Plumbing to let the FujiNet peripheral drive a cart reload and
+        console reset from within the emulator's main loop.
+*   Makefile.common, Makefile.emscripten_sdl1, Makefile.emscripten_sdl2
+    *   Build the new fujinet/ object files.
+
+-------------------------
+ New files:
+-------------------------
+
+*   src/fujinet/fujinet.c, fujinet.h
+        The mailbox peripheral itself: connection/transaction state
+        machine, register window, DBC push handling, cart-reload glue.
+*   src/fujinet/fujibus.c, fujibus.h
+        FujiBus SLIP framing (encode/decode).
+*   src/fujinet/fn_sock.c, fn_sock.h
+        Minimal non-blocking TCP socket wrapper (POSIX + Windows).
+*   src/fujinet/fuji_mailbox.h
+        Mailbox register layout; mirrors the fujinet-firmware RP2040
+        firmware's copy verbatim -- keep in sync by hand if it changes
+        upstream.
+*   src/fujinet/fujinet_config_rom.c, fujinet_config_rom.h
+        Generated embedded config ROM image and length.
+*   src/fujinet/mkconfigrom.py
+        Regenerates fujinet_config_rom.{c,h} from a built config.rom.
+*   src/fujinet/subMakefile
+        Build rules for the above, plus the `fujinet-config-rom` phony
+        target for regenerating the embedded ROM by hand.

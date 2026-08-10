@@ -1,0 +1,20 @@
+# Build output
+bin/*
+!bin/.gitkeep
+
+# BIOS/EXEC/GROM images (copyrighted, not redistributable)
+rom/*
+!rom/.gitkeep
+
+# Compiled objects
+*.o
+*.obj
+*.a
+*.so
+*.dll
+*.exe
+
+# Editor/OS cruft
+*.swp
+*~
+.DS_Store
