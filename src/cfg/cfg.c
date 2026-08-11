@@ -357,6 +357,9 @@ LOCAL const char *cfg_parseres(const char *const res,
 /* ======================================================================== */
 /*  CFG_LONGOPT  -- Long options for getopt_long                            */
 /* ======================================================================== */
+/*  Defined in gfx/gfx_sdl2.c: when nonzero, force 4:3 pillarboxing.        */
+extern int gfx_force_4_3;
+
 enum
 {
     FLAG_CGC0 = 2000,   FLAG_CGC1,         FLAG_KBDHACKFILE,  FLAG_GP2X_CLOCK,
@@ -372,7 +375,8 @@ enum
     FLAG_CHEAT15, FLAG_CHEAT16, FLAG_CHEAT17, FLAG_CHEAT18, FLAG_CHEAT19,
     FLAG_CHEAT20, FLAG_CHEAT21, FLAG_CHEAT22, FLAG_CHEAT23, FLAG_CHEAT24,
     FLAG_CHEAT25, FLAG_CHEAT26, FLAG_CHEAT27, FLAG_CHEAT28, FLAG_CHEAT29,
-    FLAG_CHEAT30, FLAG_CHEAT31
+    FLAG_CHEAT30, FLAG_CHEAT31,
+    FLAG_GFX_ASPECT_4_3
 };
 
 struct option cfg_longopt[] =
@@ -468,6 +472,8 @@ struct option cfg_longopt[] =
     {   "gfx-border-pct", 1,    NULL,       'b'                 },
     {   "gfx-border-x", 1,      NULL,       FLAG_GFX_BORD_X     },
     {   "gfx-border-y", 1,      NULL,       FLAG_GFX_BORD_Y     },
+
+    {   "aspect-4-3",   0,      NULL,       FLAG_GFX_ASPECT_4_3 },
 
     {   "gui-mode",     0,      NULL,       FLAG_GUI_MODE       },
 
@@ -799,6 +805,10 @@ void cfg_init(cfg_t *cfg, int argc, char * argv_orig[])
 
             case FLAG_GFX_DR_MERGE:
                 CHG_BIT(cfg->gfx_flags, GFX_DRCMRG, value);       
+                break;
+
+            case FLAG_GFX_ASPECT_4_3:
+                gfx_force_4_3 = 1;
                 break;
 
             case FLAG_GFX_VERBOSE:

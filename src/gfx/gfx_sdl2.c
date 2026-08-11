@@ -36,6 +36,11 @@
 
 const double frame_delta = 0.0166;  /* Slightly faster than 60Hz.           */
 
+/*  When nonzero, gfx_flip() pill/letter-boxes the image to a 4:3 aspect     */
+/*  ratio before presenting.  Set via the --aspect-4-3 command-line option   */
+/*  (see cfg/cfg.c).                                                         */
+int gfx_force_4_3 = 0;
+
 /*
  * ============================================================================
  *  GFX_PVT_T        -- Private internal state to gfx_t structure.
@@ -500,10 +505,29 @@ LOCAL int gfx_flip(const gfx_t *const gfx)
     SDL_Renderer *const rend = pvt->rend;
     SDL_Texture *const text = pvt->text;
     const SDL_Color bord_color = pvt->pal_on[gfx->b_color];
-    const SDL_Rect dest = {
+    SDL_Rect dest = {
         .x = pvt->ofs_x, .y = pvt->ofs_y,
         .w = pvt->scaler.actual_x, .h = pvt->scaler.actual_y
     };
+
+    /* -------------------------------------------------------------------- */
+    /*  4:3 enforcement.  The target display is 16:9, and the framebuffer    */
+    /*  is stretched to fill it, so a full-width image looks horizontally    */
+    /*  stretched.  Compress the image to 3/4 of the output width (the ratio */
+    /*  (4:3) / (16:9) = 3/4) and center it: after the display's 16:9        */
+    /*  stretch the visible picture is a correct 4:3, with pillarbox bars    */
+    /*  in the border color.  This holds for any -z framebuffer size.        */
+    /* -------------------------------------------------------------------- */
+    if (gfx_force_4_3)
+    {
+        int ow = pvt->dim_x, oh = pvt->dim_y;
+        SDL_GetRendererOutputSize(rend, &ow, &oh);
+        const int tw = (ow * 3) / 4;
+        dest.x = (ow - tw) / 2;
+        dest.y = 0;
+        dest.w = tw;
+        dest.h = oh;
+    }
 
     /* -------------------------------------------------------------------- */
     /*  The docs for SDL_RenderPresent indicate that the back-buffer        */
@@ -511,7 +535,12 @@ LOCAL int gfx_flip(const gfx_t *const gfx)
     /*  need to clear the backdrop to our border color before copying the   */
     /*  texture to the display.                                             */
     /* -------------------------------------------------------------------- */
-    SDL_SetRenderDrawColor(rend, bord_color.r, bord_color.g, bord_color.b, 255);
+    /*  With 4:3 enforcement the cleared area becomes the side (pillarbox)   */
+    /*  bars, which we want black rather than the game's border color.       */
+    if (gfx_force_4_3)
+        SDL_SetRenderDrawColor(rend, 0, 0, 0, 255);
+    else
+        SDL_SetRenderDrawColor(rend, bord_color.r, bord_color.g, bord_color.b, 255);
     SDL_RenderClear(rend);
     if (pvt->vid_enable || gfx->debug_blank)
         SDL_RenderCopy(rend, text, NULL,

@@ -98,6 +98,7 @@ void usage(void)
                                                                             "\n"
 "            --gfx-border-x=#      Directly set horizontal border padding." "\n"
 "            --gfx-border-y=#      Directly set vertical border padding."   "\n"
+"            --aspect-4-3          Force 4:3 aspect ratio (pillar/letterbox)""\n"
                                                                             "\n"
 "            --resolution=<res>    Synonym for --displaysize"               "\n"
 "    -f# -x# --fullscreen=#        Full screen display:"                    "\n"
