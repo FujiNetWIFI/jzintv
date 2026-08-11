@@ -68,7 +68,8 @@ int game_metadata_set_unspec_compat_to_defaults
         }
 
         /* The name JLP_ACCEL_OFF kinda sucks. */
-        if ( game_metadata->jlp_flash > 0 )
+        if ( game_metadata->jlp_flash > 0 &&
+             game_metadata->jlp_accel != JLP_ACCEL_OFF)
             game_metadata->jlp_accel =
                 game_metadata->jlp_accel == JLP_DISABLED ? JLP_ACCEL_OFF
                                                          : JLP_ACCEL_FLASH_ON;

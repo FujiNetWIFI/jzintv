@@ -213,6 +213,8 @@ LOCAL void debug_print_usage(void)
 ">> with the 'L'oad command shown above\n"
 "\n"
     );
+
+    jzp_flush();
 }
 
 /* ======================================================================== */
@@ -1095,6 +1097,7 @@ uint32_t debug_tk(periph_t *p, uint32_t len)
                     debug_format_addr(debug, ni_start, pcbuf0, sizeof(pcbuf0)),
                     debug_format_addr(debug, ni_end, pcbuf1, sizeof(pcbuf1)),
                     ni_cycle);
+                jzp_flush();
             }
 
             non_int = 0;

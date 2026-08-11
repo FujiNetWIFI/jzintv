@@ -383,21 +383,37 @@ int mark_interp(uint32_t addr, uint32_t flags, int len, const char *cmt)
 {
     int i;
     int changed = 0;
+    int cur_len, max_len = 0x10000;
+
+    /* The emitter limits the length of decles and bidecles. */
+    if (flags & FLAG_DATA) {
+        max_len = 4;
+    }
+    else if (flags & FLAG_DBDATA) {
+        max_len = 2;
+    }
+
+    cur_len = (len > max_len) ? max_len : len;
 
     for (i = 0; i < len; i++)
     {
         uint32_t old_flags = instr[addr + i].flags;
 
         if (flags & MASK_DATA)
-            instr[addr + 1].flags &= ~MASK_DATA;
+            instr[addr + i].flags &= ~MASK_DATA;
 
         instr[addr + i].flags &= ~MASK_CODE;
         instr[addr + i].flags |= flags | FLAG_INTERP | FLAG_INVOP;
-        instr[addr + i].len    = len - i;
+        instr[addr + i].len    = cur_len;
         instr[addr + i].cmt    = cmt;
 
 //printf("addr=%.4X  flags %.8X to %.8X\n", addr, old_flags, instr[addr+i].flags);
         changed += ((old_flags ^ instr[addr + i].flags) & (FLAG_INTERP|FLAG_INVOP)) != 0;
+
+        if (--cur_len == 0) {
+            int n_remaining = len - i - 1;
+            cur_len = (n_remaining > max_len) ? max_len : n_remaining;
+        }
     }
 
     return changed;
@@ -1348,6 +1364,32 @@ LOCAL int find_funky_branches(void)
         if (NOT_CODE(addr) || IS_BRANCH(addr))
             continue;
 
+        if ( instr[addr].op1.type == OP_REG &&
+             instr[addr].op1.op   == 6      &&
+            (instr[addr].op1.flags & OPF_DST))
+        {
+            switch (instr[addr].mnemonic) {
+
+                case M_COMR:
+                case M_NEGR:
+                {
+                    if (suspicious_pc_math_is_invalid)
+                    {
+                        changed += mark_invalid(addr);
+                    }
+                    break;
+                }
+
+                case M_RSWD:    /* Treat RSWD R6 as always illegal, period */
+                {
+                    changed += mark_invalid(addr);
+                    break;
+                }
+            }
+
+            continue;
+        }
+
         /* ---------------------------------------------------------------- */
         /*  Check the first operand.  Only 1op Reg format can set this to   */
         /*  "R7 is destination".                                            */
@@ -1431,6 +1473,48 @@ LOCAL int find_funky_branches(void)
         /* ---------------------------------------------------------------- */
         /*  Check the second operand.                                       */
         /* ---------------------------------------------------------------- */
+        if ( instr[addr].op2.type == OP_REG &&
+             instr[addr].op2.op   == 6      &&
+            ((instr[addr].op2.flags & (OPF_DST | OPF_IND)) == OPF_DST))
+        {
+            switch (instr[addr].mnemonic)
+            {
+                /* -------------------------------------------------------- */
+                /*  These are very suspicious.                              */
+                /* -------------------------------------------------------- */
+                case M_ANDI:
+                case M_AND:
+                case M_AND_:
+                case M_ANDR:
+                case M_XORI:
+                case M_XOR:
+                case M_XOR_:
+                case M_XORR:
+                {
+                    if (suspicious_pc_math_is_invalid)
+                    {
+                        changed += mark_invalid(addr);
+                    }
+
+                    break;
+                }
+
+                case M_ADDR:
+                {
+                    int reg1 = instr[addr].op1.type == OP_REG ?
+                                   instr[addr].op1.op : -1;
+                    if (suspicious_pc_math_is_invalid &&
+                        (reg1 == 6 || reg1 == 7))
+                    {
+                        changed += mark_invalid(addr);
+                    }
+
+                    break;
+                }
+            }
+            continue;
+        }
+
         if ( instr[addr].op2.type == OP_REG &&
              instr[addr].op2.op   == 7      &&
             ((instr[addr].op2.flags & (OPF_DST | OPF_IND)) == OPF_DST))
@@ -1860,6 +1944,7 @@ LOCAL int kill_bad_branches(void)
         {
             instr[addr].flags &= ~FLAG_BRTRG;
             free(instr[addr].target_of);
+            instr[addr].target_of = NULL;
             instr[addr].tg_of_cnt = 0;
             instr[addr].tg_of_max = 0;
         }
@@ -2217,6 +2302,7 @@ LOCAL void mark_data(void)
     {
         if ((instr[addr].flags & MASK_DATA) == FLAG_DBDATA &&
             ((GET_WORD(addr) & 0xFF00) != 0 ||
+             (GET_WORD(addr+1) & 0xFF00) != 0 ||
              (instr[addr+1].flags & MASK_DATA) != FLAG_DBDATA))
         {
             instr[addr].flags &= ~MASK_DATA;

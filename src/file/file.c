@@ -236,12 +236,17 @@ int is_absolute_path(const char *fname)
     if (fname[0] == PATH_SEP)
         return 1;
 
+    /* PATH_SEP is backslash on PLAT_WIN32, but allow forward slash as well. */
+    if (PLAT_WIN32 && fname[0] == '/')
+        return 1;
+
     if ( has_lzoe_prefix( fname ) )
         return 1;
 
     /* Look for a drive letter */
     if (PLAT_WIN32 &&
-        isalpha(fname[0]) && fname[1] == ':' && fname[2] == PATH_SEP)
+        isalpha(fname[0]) && fname[1] == ':' &&
+        (fname[2] == PATH_SEP || fname[2] == '/'))
         return 1;
 
     /* Look for a prefix of the form "VOL:".  Allow everything but the      */
@@ -635,12 +640,18 @@ macosx_fail:
 
     if (PLAT_WIN32)
     {
+        if (argv0[0] == '/')
+        {
+            new_exe_path = strdup(argv0);
+            goto got_exe_path;
+        }
+
         if (strlen(argv0) > 3 && isalpha(argv0[0]) && argv0[1] == ':')
         {
             /* ------------------------------------------------------------ */
             /*  Common case: C:\path\to\jzintv.exe                          */
             /* ------------------------------------------------------------ */
-            if (argv0[2] == PATH_SEP)
+            if (argv0[2] == PATH_SEP || argv0[2] == '/')
             {
                 new_exe_path = strdup(argv0);
                 goto got_exe_path;
@@ -745,6 +756,10 @@ got_exe_path:
     /*  Possible late failure mode: We can't find PATH_SEP.                 */
     /* -------------------------------------------------------------------- */
     s = strrchr(new_exe_path, PATH_SEP);
+    if (PLAT_WIN32 && !s)
+    {
+        s = strrchr(new_exe_path, '/');
+    }
     if (!s)
     {
         free(new_exe_path);

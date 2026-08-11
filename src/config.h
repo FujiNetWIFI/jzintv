@@ -294,7 +294,7 @@
 #  define PLAT_WIN32 PLAT_WIN32_MINGW
 # endif
 
-#elif
+#else
 # undef PLAT_GENERIC
 # define PLAT_GENERIC (1)
 #endif  /* Platform determination */
@@ -363,7 +363,7 @@
 #  define U64_FMT "I64u"
 #  define X64_FMT "I64x"
 # endif
-# if !IS_MSVC
+# if PLAT_WIN32 != PLAT_WIN32_MSVC
 #  define USE_STRCASECMP
 #  define NEED_INOUT INOUT_GCC
 # else

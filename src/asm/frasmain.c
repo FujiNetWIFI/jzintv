@@ -61,6 +61,7 @@ struct evalrel evalr[NUMPEXP];
 
 //unsigned int memory_bitmap[65536 >> 5];
 int show_map = FALSE;
+int silent = FALSE;
 
 time_t asm_time = 0;
 struct tm asm_time_local;
@@ -85,6 +86,7 @@ LOCAL void usage(void)
 "   -j <file>   --src-map=<file>      Specify source-map file\n"
 "   -i <path>   --include=<path>      Append <path> to include path\n"
 "   -m          --show-map            Summarize memory map after assembly\n"
+"   -q          --quiet               Hide non-error output\n"
 "   -3   -c     --cc3                 Assemble .ROMs for CC3\n"
 "   -h   -?     --help                Show this usage info\n"
 "   -v          --version             Show assembler version\n"
@@ -105,6 +107,7 @@ static struct option longopts[] =
     { "list-file",          1,  NULL,   'l' },
     { "out-file",           1,  NULL,   'o' },
     { "show-map",           0,  NULL,   'm' },
+    { "quiet",              0,  NULL,   'q' },
     { "sym-file",           1,  NULL,   's' },
     { "src-map",            1,  NULL,   'j' },
     { "version",            0,  NULL,   'v' },
@@ -146,7 +149,7 @@ int asm_main(int argc, char *argv[])
 
     grv = cpumatch(argv[0]);
 
-    while( (grv = getopt_long(argc, argv, "mdj:o:l:s:p:i:c3v?he",
+    while( (grv = getopt_long(argc, argv, "mqdj:o:l:s:p:i:c3v?he",
                               longopts, NULL)) != EOF)
     {
         switch(grv)
@@ -179,6 +182,10 @@ int asm_main(int argc, char *argv[])
 
         case 'm':
             show_map = TRUE;
+            break;
+
+        case 'q':
+            silent = TRUE;
             break;
 
         case 'p':
@@ -436,16 +443,30 @@ int asm_main(int argc, char *argv[])
     if(errorcnt > 0)
         hexvalid = FALSE;
 
-    fprintf(loutf, " ERROR SUMMARY - ERRORS DETECTED %d\n", errorcnt);
-    fprintf(loutf, "               -  WARNINGS       %d\n", warncnt);
-    listlineno += 2;
+    if (errorcnt > 0 || !silent)
+    {
+        fprintf(loutf, " ERROR SUMMARY - ERRORS DETECTED %d\n", errorcnt);
+        listlineno++;
+    }
+
+    if (warncnt > 0 || !silent)
+    {
+        fprintf(loutf, "               -  WARNINGS       %d\n", warncnt);
+        listlineno++;
+    }
 
     if(listflag)
     {
-        fprintf(stderr, " ERROR SUMMARY - ERRORS DETECTED %d\n",
-            errorcnt);
-        fprintf(stderr, "               -  WARNINGS       %d\n",
-            warncnt);
+        if (errorcnt > 0 || !silent)
+        {
+            fprintf(stderr, " ERROR SUMMARY - ERRORS DETECTED %d\n",
+                errorcnt);
+        }
+        if (warncnt > 0 || !silent)
+        {
+            fprintf(stderr, "               -  WARNINGS       %d\n",
+                warncnt);
+        }
     }
 
     if(listflag)
