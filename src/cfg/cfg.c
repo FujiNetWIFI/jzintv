@@ -382,6 +382,8 @@ struct option cfg_longopt[] =
     {   "gromimg",      1,      NULL,       'g'                 },
     {   "gramsize",     1,      NULL,       'G'                 },
     {   "ecs",          2,      NULL,       's'                 },
+    {   "tv",           2,      NULL,       't'                 },
+    {   "sptv",         2,      NULL,       'u'                 },
     {   "fullscreen",   2,      NULL,       'f'                 },
     {   "audiofile",    1,      NULL,       'F'                 },
     {   "debugger",     0,      NULL,       'd'                 },
@@ -515,7 +517,7 @@ struct option cfg_longopt[] =
     {   NULL,           0,      NULL,       0                   }
 };
 
-LOCAL const char *optchars= "b:E:e:G:g:s::f::F:?dhlqr:P::x::z:a:w:B:C:M:m:"
+LOCAL const char *optchars= "b:E:e:G:g:s::t::u::f::F:?dhlqr:P::x::z:a:w:B:C:M:m:"
                             "v::W::V::i::I::c:D:p:J:j::";
 
 /* ======================================================================== */
@@ -547,18 +549,19 @@ void cfg_init(cfg_t *cfg, int argc, char * argv_orig[])
     int jlp_flash = -1;
     LZFILE *f;
     int silent = 0;
-    char *debug_symtbl   = NULL;
-    char *debug_script   = NULL;
-    char *debug_srcmap   = NULL;
-    int snd_buf_size     = 0;
-    int snd_buf_cnt      = 0;
-    int gfx_verbose      = 0;
-    int rand_mem         = 0;
-    int enable_mouse     = 0;
-    int ecs_bin_fail_ok  = 0;
-    char       *disp_res = NULL;
-    const char *err_msg  = NULL;
-    int locutus          = 0;
+    char *debug_symtbl      = NULL;
+    char *debug_script      = NULL;
+    char *debug_srcmap      = NULL;
+    int snd_buf_size        = 0;
+    int snd_buf_cnt         = 0;
+    int gfx_verbose         = 0;
+    int rand_mem            = 0;
+    int enable_mouse        = 0;
+    int ecs_bin_fail_ok     = 0;
+    int wbexec_bin_fail_ok  = 0;
+    char       *disp_res    = NULL;
+    const char *err_msg     = NULL;
+    int locutus             = 0;
 #ifndef NO_SERIALIZER
     ser_hier_t *ser_cfg;
 #endif
@@ -618,14 +621,16 @@ void cfg_init(cfg_t *cfg, int argc, char * argv_orig[])
     /* -------------------------------------------------------------------- */
     memset((void *)cfg, 0, sizeof(cfg_t));
 
-    cfg->pal_mode   = 0;            /* Default NTSC                         */
-    cfg->gram_size  = -1;           /* Automatic GRAM size                  */
-    cfg->audio_rate = DEFAULT_AUDIO_HZ;     /* see config.h                 */
-    cfg->psg_window = -1;           /* Automatic window setting.            */
-    cfg->ecs_enable = -1;           /* Automatic (dflt: ECS off)            */
-    cfg->ivc_enable = -1;           /* Automatic (dflt: Intellivoice off.   */
-    cfg->ivc_window = -1;           /* Automatic window setting.            */
-    cfg->gfx_flags  = 0             /* Windowed, single buf, hardware surf  */
+    cfg->pal_mode    = 0;    /* Default NTSC                                */
+    cfg->gram_size   = -1;   /* Automatic GRAM size                         */
+    cfg->audio_rate  = DEFAULT_AUDIO_HZ;  /* see config.h                   */
+    cfg->psg_window  = -1;   /* Automatic window setting.                   */
+    cfg->ecs_enable  = -1;   /* Automatic (dflt: ECS off)                   */
+    cfg->ivc_enable  = -1;   /* Automatic (dflt: Intellivoice off.          */
+    cfg->sptv_enable = -1;   /* Automatic (dflt: Super Pro TutorVision off) */
+    cfg->tv_enable   = -1;   /* Automatic (dflt: TutorVision off)           */
+    cfg->ivc_window  = -1;   /* Automatic window setting.                   */
+    cfg->gfx_flags   = 0     /* Windowed, single buf, hardware surf         */
 #if 0
                     | GFX_DRECTS    /* Dirty rectangle update               */
                     | GFX_DRCMRG;   /* Allow merging cln rect btwn 2 dirty  */
@@ -677,6 +682,8 @@ void cfg_init(cfg_t *cfg, int argc, char * argv_orig[])
     ser_cfg = ser_new_hierarchy(NULL, "cfg");
     SER_REG(ecs_enable, ser_s32,    1,  SER_INIT|SER_MAND);
     SER_REG(ivc_enable, ser_s32,    1,  SER_INIT|SER_MAND);
+    SER_REG(sptv_enable, ser_s32,   1,  SER_INIT|SER_MAND);
+    SER_REG(tv_enable,  ser_s32,    1,  SER_INIT|SER_MAND);
     SER_REG(ivc_tname,  ser_string, 1,  SER_INIT|SER_MAND);
 #endif
 
@@ -716,6 +723,8 @@ void cfg_init(cfg_t *cfg, int argc, char * argv_orig[])
             case 'G': cfg->gram_size  = value;                          break;
             case 'F': STR_REPLACE(audiofile       , optarg);            break;
             case 's': cfg->ecs_enable = value;                          break;
+            case 't': cfg->tv_enable  = value;                          break;
+            case 'u': cfg->sptv_enable = value;                         break;
             case 'z': STR_REPLACE(disp_res        , optarg);            break;
             case 'd': cfg->debugging  = 1;                              break;
             case 'r': cfg->rate_ctl   = dvalue;                         break;
@@ -1139,70 +1148,10 @@ void cfg_init(cfg_t *cfg, int argc, char * argv_orig[])
     cfg->i2pc1_port = i2pc_ports[cfg->i2pc1_port];
 #endif
 
-    /* -------------------------------------------------------------------- */
-    /*  Create a new peripheral bus for the Intellivision main console.     */
-    /* -------------------------------------------------------------------- */
-    cfg->intv = periph_new(16, 16, 4);
-    strncpy(cfg->intv->periph.name, "MasterComponent", 16);
 
     /* -------------------------------------------------------------------- */
-    /*  Now, configure the Intellivision according to our flags.  Start     */
-    /*  off by reading in the EXEC, GROM, and GAME images.                  */
+    /*                     START Read ROM CFG Metadata                      */
     /* -------------------------------------------------------------------- */
-    f = path_fopen(rom_path, cfg->fn_exec, "rb");
-
-    exec_type = 0;
-    if (!f || file_read_rom16(f, 4096, cfg->exec_img) != 4096)
-    {
-        if (errno) perror("file_read_rom16");
-        fprintf(stderr, "ERROR:  Could not read EXEC image '%s'\n",
-                cfg->fn_exec);
-        dump_search_path(rom_path);
-        exit(1);
-    }
-    lzoe_fseek(f, 0, SEEK_END);
-    if (lzoe_ftell(f) == 2 * (4096 + 256))
-    {
-        exec_type = 1;
-        lzoe_fseek(f, 8192, SEEK_SET);
-        if (file_read_rom16(f, 256, cfg->exec_img + 4096) != 256)
-        {
-            if (errno) perror("file_read_rom16");
-            fprintf(stderr, "ERROR:  Could not read EXEC2 image '%s'\n",
-                    cfg->fn_exec);
-            exit(1);
-        }
-    } else if (lzoe_ftell(f) == 2 * 8192)
-    {
-        exec_type = 2;  /* INTV88 / TutorVision */
-        lzoe_fseek(f, 8192, SEEK_SET);
-        if (file_read_rom16(f, 4096, cfg->exec_img + 4096) != 4096)
-        {
-            if (errno) perror("file_read_rom16");
-            fprintf(stderr, "ERROR:  Could not read WBEXEC image '%s'\n",
-                    cfg->fn_exec);
-            exit(1);
-        }
-    }
-
-    lzoe_fclose(f);
-
-    f = path_fopen(rom_path, cfg->fn_grom, "rb");
-    if (!f || file_read_rom8 (f, 2048, cfg->grom_img) != 2048)
-    {
-        if (errno) perror("file_read_rom8");
-        fprintf(stderr, "ERROR:  Could not read GROM image '%s'\n",
-                cfg->fn_grom);
-        dump_search_path(rom_path);
-        exit(1);
-    }
-    lzoe_fclose(f);
-
-    /* -------------------------------------------------------------------- */
-    /*  Once we know the EXEC type, adjust the GRAM size if necessary       */
-    /* -------------------------------------------------------------------- */
-    if (cfg->gram_size < 0)
-        cfg->gram_size = exec_type == 2 ? 2 : 0;
 
     /* -------------------------------------------------------------------- */
     /*  XXX:  Hack:  If locutus == 1, then this is a LUIGI file.  Short     */
@@ -1346,6 +1295,25 @@ locutus_loaded:
     if (meta)
     {
         game_metadata_set_unspec_compat_to_defaults(meta);
+        if (cfg->sptv_enable > 0 || cfg->tv_enable > 0 || (cfg->tv_enable == -1 && meta->tv_compat >= CMP_ENHANCED) ) {
+            cfg->tv_enable = 1;
+
+            if (cfg->sptv_enable <= 0) { 
+                STR_REPLACE(cfg->fn_exec, "wbexec.bin");
+            } else {
+                STR_REPLACE(cfg->fn_exec, "superproexec.bin");
+            }
+
+            STR_REPLACE(cfg->fn_grom, "wbgrom.bin");
+
+            if (meta->tv_compat == CMP_ENHANCED) {
+                wbexec_bin_fail_ok = 1;
+            }
+
+        } else if (cfg->tv_enable == 0 && meta->tv_compat == CMP_REQUIRES) {
+            jzp_printf("\nWARNING:  TutorVision explicitly disabled; "
+                "however the game says the TutorVision is required.\n\n");
+        }
 
         if (cfg->ecs_enable == -1 && meta->ecs_compat >= CMP_ENHANCED)
         {
@@ -1385,6 +1353,111 @@ locutus_loaded:
             free_game_metadata( meta );
         meta = NULL;
     }
+
+    /* -------------------------------------------------------------------- */
+    /*                     END Read ROM CFG Metadata                        */
+    /* -------------------------------------------------------------------- */
+
+    /* -------------------------------------------------------------------- */
+    /*  Create a new peripheral bus for the Intellivision main console.     */
+    /* -------------------------------------------------------------------- */
+    cfg->intv = periph_new(16, 16, 4);
+    strncpy(cfg->intv->periph.name, "MasterComponent", 16);
+
+
+    /* -------------------------------------------------------------------- */
+    /*  Now, configure the Intellivision according to our flags.  Start     */
+    /*  off by reading in the EXEC, GROM, and GAME images.                  */
+    /* -------------------------------------------------------------------- */
+
+    f = path_fopen(rom_path, cfg->fn_exec, "rb");
+    if (!f && wbexec_bin_fail_ok == 1) {
+        STR_REPLACE(cfg->fn_exec, "superproexec.bin");
+        f = path_fopen(rom_path, cfg->fn_exec, "rb");
+        jzp_printf(
+            "\n"
+            "NOTE: Game is 'enhanced by' the TutorVision, and"
+            " jzIntv tried to automatically enable\n"
+            "      TutorVision support.  However, jzIntv was "
+            "unable to load wbexec.bin.\n\n"
+            "      falling back to superproexec.bin.\n\n");
+
+        if (!f) { 
+            STR_REPLACE(cfg->fn_exec, "exec.bin"); 
+            f = path_fopen(rom_path, cfg->fn_exec, "rb");
+            jzp_printf(
+                "\n"
+                "NOTE: Game is 'enhanced by' the TutorVision, and"
+                " jzIntv tried to automatically enable\n"
+                "      TutorVision support.  However, jzIntv was "
+                "unable to load the superproexec.bin.\n\n"
+                "      falling back to exec.bin.\n\n");
+        }
+    }
+
+    exec_type = 0;
+    if (!f || file_read_rom16(f, 4096, cfg->exec_img) != 4096)
+    {
+        if (errno) perror("file_read_rom16");
+        fprintf(stderr, "ERROR:  Could not read EXEC image '%s'\n",
+                cfg->fn_exec);
+        dump_search_path(rom_path);
+        exit(1);
+    }
+    lzoe_fseek(f, 0, SEEK_END);
+    if (lzoe_ftell(f) == 2 * (4096 + 256))
+    {
+        exec_type = 1;
+        lzoe_fseek(f, 8192, SEEK_SET);
+        if (file_read_rom16(f, 256, cfg->exec_img + 4096) != 256)
+        {
+            if (errno) perror("file_read_rom16");
+            fprintf(stderr, "ERROR:  Could not read EXEC2 image '%s'\n",
+                    cfg->fn_exec);
+            exit(1);
+        }
+    } else if (lzoe_ftell(f) == 2 * 8192)
+    {
+        exec_type = 2;  /* INTV88 / TutorVision */
+        lzoe_fseek(f, 8192, SEEK_SET);
+        if (file_read_rom16(f, 4096, cfg->exec_img + 4096) != 4096)
+        {
+            if (errno) perror("file_read_rom16");
+            fprintf(stderr, "ERROR:  Could not read WBEXEC image '%s'\n",
+                    cfg->fn_exec);
+            exit(1);
+        }
+    }
+    lzoe_fclose(f);
+
+    f = path_fopen(rom_path, cfg->fn_grom, "rb");
+    if (!f && wbexec_bin_fail_ok == 1) {
+        STR_REPLACE(cfg->fn_grom, "grom.bin");
+        f = path_fopen(rom_path, cfg->fn_grom, "rb");
+        jzp_printf(
+            "\n"
+            "NOTE: Game is 'enhanced by' the TutorVision, and"
+            " jzIntv tried to automatically enable\n"
+            "      TutorVision support.  However, jzIntv was "
+            "unable to load the TutorVision Grom.\n\n"
+            "      Disabling TutorVision Grom support.\n\n");
+    }
+
+    if (!f || file_read_rom8 (f, 2048, cfg->grom_img) != 2048)
+    {
+        if (errno) perror("file_read_rom8");
+        fprintf(stderr, "ERROR:  Could not read GROM image '%s'\n",
+                cfg->fn_grom);
+        dump_search_path(rom_path);
+        exit(1);
+    }
+    lzoe_fclose(f);
+
+    /* -------------------------------------------------------------------- */
+    /*  Once we know the EXEC type, adjust the GRAM size if necessary       */
+    /* -------------------------------------------------------------------- */
+    if (cfg->gram_size < 0)
+        cfg->gram_size = exec_type == 2 ? 2 : 0;
 
     /* -------------------------------------------------------------------- */
     /*  Try to load the ECS ROM image early, in case we need to fall back   */

@@ -80,6 +80,8 @@ typedef struct cfg_t
     int         psg_window;     /* Window size for PSG sliding window       */
     int         ecs_enable;     /* ECS enable/disable flag.                 */
     int         ivc_enable;     /* Ivoice enable/disable flag.              */
+    int         tv_enable;      /* TutorVision enable/disable flag          */
+    int         sptv_enable;    /* Super Pro Tutor enable/disable flag      */
     int         ivc_window;     /* Window size for Ivoice sliding window.   */
     char       *ivc_tname;      /* Intellivoice sample file name template.  */
     int         gfx_flags;      /* SDL mode flags (fullsc/windowed, etc)    */

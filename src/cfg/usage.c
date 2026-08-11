@@ -66,6 +66,8 @@ void usage(void)
                                                                             "\n"
 "Intellivision Hardware Flags:"                                             "\n"
 "    -s#     --ecs=#               ECS.           0: Disable, 1: Enable"    "\n"
+"    -t#     --tv=#                TutorVision.   0: Disable, 1: Enable"    "\n"
+"    -u#     --sptv=#              SuperProTutor. 0: Disable, 1: Enable"    "\n"
 "    -v#     --voice=#             Intellivoice.  0: Disable, 1: Enable"    "\n"
 "    -W#     --voicewindow=#       Sets averaging window for voice filter." "\n"
 "    -Vname  --voicefiles=name     Saves voice WAV files to name####.wav."  "\n"
