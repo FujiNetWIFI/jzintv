@@ -2,6 +2,12 @@
 bin/*
 !bin/.gitkeep
 
+# Vendored build dependencies fetched by build.sh
+/build-support/
+
+# Release archives produced by package-release.sh
+*.zip
+
 # BIOS/EXEC/GROM images (copyrighted, not redistributable)
 rom/*
 !rom/.gitkeep
