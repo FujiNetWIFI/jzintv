@@ -138,7 +138,7 @@ see http://spatula-city.org/~im14u2c/intv/ for full credits.  FujiNet
 support added for the FujiNet project (https://fujinet.online/).  Licensed
 GPL v2 or later, same as jzIntv -- see COPYING.txt.
 
-diff --color -ruN a/examples/fujinet/fujitest.bas b/examples/fujinet/fujitest.bas
+diff --color --color -ruN -x .git -x .claude -x .gitignore -x README -x '*.o' -x '*.a' -x '*.dll' -x '*.exe' -x '*.rom' -x '*.bin' -x jzintv -x jzintv_batch -x .gitkeep -x README.md -x '*.patch' -x svn_revision.c a/examples/fujinet/fujitest.bas b/examples/fujinet/fujitest.bas
 --- a/examples/fujinet/fujitest.bas	1969-12-31 18:00:00.000000000 -0600
 +++ b/examples/fujinet/fujitest.bas	2026-08-10 12:05:58.438771906 -0500
 @@ -0,0 +1,145 @@
@@ -287,7 +287,7 @@ diff --color -ruN a/examples/fujinet/fujitest.bas b/examples/fujinet/fujitest.ba
 +        print at ROW*5+4+i,(c-32)*8+7
 +    next i
 +end
-diff --color -ruN a/examples/fujinet/README.txt b/examples/fujinet/README.txt
+diff --color --color -ruN -x .git -x .claude -x .gitignore -x README -x '*.o' -x '*.a' -x '*.dll' -x '*.exe' -x '*.rom' -x '*.bin' -x jzintv -x jzintv_batch -x .gitkeep -x README.md -x '*.patch' -x svn_revision.c a/examples/fujinet/README.txt b/examples/fujinet/README.txt
 --- a/examples/fujinet/README.txt	1969-12-31 18:00:00.000000000 -0600
 +++ b/examples/fujinet/README.txt	2026-08-10 12:06:10.304685183 -0500
 @@ -0,0 +1,66 @@
@@ -357,23 +357,55 @@ diff --color -ruN a/examples/fujinet/README.txt b/examples/fujinet/README.txt
 +    intybasic --title "FujiNet Test" fujitest.bas fujitest.asm <path-to-intybasic-prologue-epilogue>
 +    as1600 fujitest.asm -o fujitest.bin -l fujitest.lst
 +    bin2rom fujitest
-Binary files a/examples/spacepat/exe/fixsum.exe and b/examples/spacepat/exe/fixsum.exe differ
-Binary files a/examples/spacepat/exe/makecity.exe and b/examples/spacepat/exe/makecity.exe differ
-Binary files a/examples/spacepat/exe/makerock.exe and b/examples/spacepat/exe/makerock.exe differ
-Binary files a/examples/spacepat/exe/maketmnt.exe and b/examples/spacepat/exe/maketmnt.exe differ
-Binary files a/examples/spacepat/exe/mkfont16.exe and b/examples/spacepat/exe/mkfont16.exe differ
-Binary files a/examples/spacepat/exe/pm16.exe and b/examples/spacepat/exe/pm16.exe differ
-Binary files a/examples/spacepat/exe/profile.exe and b/examples/spacepat/exe/profile.exe differ
-Binary files a/examples/spacepat/exe/sctc.exe and b/examples/spacepat/exe/sctc.exe differ
-Binary files a/examples/spacepat/exe/today.exe and b/examples/spacepat/exe/today.exe differ
-Binary files a/examples/spacepat/exe/wasm3.exe and b/examples/spacepat/exe/wasm3.exe differ
-diff --color -ruN a/ReleaseNotes_FujiNet.txt b/ReleaseNotes_FujiNet.txt
+diff --color --color -ruN -x .git -x .claude -x .gitignore -x README -x '*.o' -x '*.a' -x '*.dll' -x '*.exe' -x '*.rom' -x '*.bin' -x jzintv -x jzintv_batch -x .gitkeep -x README.md -x '*.patch' -x svn_revision.c a/ReleaseNotes_FujiNet.txt b/ReleaseNotes_FujiNet.txt
 --- a/ReleaseNotes_FujiNet.txt	1969-12-31 18:00:00.000000000 -0600
-+++ b/ReleaseNotes_FujiNet.txt	2026-08-19 16:51:28.969164509 -0500
-@@ -0,0 +1,127 @@
++++ b/ReleaseNotes_FujiNet.txt	2026-08-19 18:37:06.815695254 -0500
+@@ -0,0 +1,169 @@
 +Release notes for the FujiNet fork.
 +Based on upstream jzIntv 20200712 (SVN r2110).  See ReleaseNotes_20200712.txt
 +and earlier ReleaseNotes_*.txt files for the upstream emulator's history.
++
++-------------------------------------------------
++ ROM pushes wedging partway through ("BOOTING"):
++-------------------------------------------------
++
++A pushed cart could stop dead partway through the transfer, leaving the
++console on the config ROM's "BOOTING / DO NOT POWER OFF" screen with the
++progress bar frozen (95% for Deep Pockets, other titles elsewhere) and the
++title line drawn as garbage.  Deterministic per title: Deep Pockets, Body
++Slam, Spiker, Stadium Mud Buggies, Super Pro Decathlon, Super Pro Football
++and Pole Position hung, while Chip Shot, Slam Dunk, Commando, Diner and
++Hover Force pushed fine.  Each affected ROM loaded and played correctly
++when passed to jzIntv directly as bin+cfg, so neither the images nor their
++mappings were at fault.
++
++*   src/fujinet/fujinet.h: the raw receive buffer was sized
++    FUJI_MB_RX_MAX + 128 = 640 bytes.  That constant bounds the *mailbox's*
++    reply window in cartridge RAM, an address-space budget -- but the same
++    buffer also has to hold whole SLIP-encoded frames off the wire, and the
++    ROM push's NETCMD_WRITE frames carry DISK_SECTORBUF_SIZE (512) bytes of
++    payload.  Decoded that is a 6-byte header + 512 = 518; SLIP escaping of
++    0xC0/0xDB can nearly double it, 1038 worst case.  A chunk of graphics
++    data with a long run of 0xC0 -- an ordinary two-pixel column pattern --
++    overflows 640 comfortably.  Now sized from FUJIBUS_RAW_RX_MAX (1088),
++    backported from the RP2040 firmware's fuji_mailbox.h along with its
++    rationale and the FUJI_BOOT_ERR_TOOBIG / _BANKSW codes.
++*   src/fujinet/fujinet.c: that overflow was unrecoverable, which is what
++    turned it into a hang rather than a failed boot.  The RP2040 reference
++    keeps its rxlen/seen_end as locals inside one deadline loop, so an
++    over-long frame simply times the transaction out and the next one
++    starts clean.  Here they live in fujinet_t and persist across ticks
++    (a frame can straddle any number of them), and nothing reset them on
++    the failure paths -- so once rxlen reached sizeof(rxbuf) without two
++    frame delimiters, the accumulate loop's own guard was false on every
++    subsequent tick: not one more byte drained, no frame parsed, no DBC ACK
++    sent, ever.  New fujinet_rx_resync() on both the buffer-full and
++    parse-failure paths.  Back-to-back frame delimiters are also collapsed
++    now, the way SLIP treats empty frames.
++*   src/fujinet/fujinet.c: fujinet_rom_buf_append() assigned realloc()'s
++    result straight back over the only pointer to the in-flight image, so a
++    failed grow leaked it and then memcpy'd into NULL.  It now keeps the
++    existing buffer and fails the boot with FUJI_BOOT_ERR_TRUNCATED.
 +
 +---------------------------------
 + Booting the larger cartridges:
@@ -498,7 +530,7 @@ diff --color -ruN a/ReleaseNotes_FujiNet.txt b/ReleaseNotes_FujiNet.txt
 +*   src/fujinet/subMakefile
 +        Build rules for the above, plus the `fujinet-config-rom` phony
 +        target for regenerating the embedded ROM by hand.
-diff --color -ruN a/src/cfg/cfg.c b/src/cfg/cfg.c
+diff --color --color -ruN -x .git -x .claude -x .gitignore -x README -x '*.o' -x '*.a' -x '*.dll' -x '*.exe' -x '*.rom' -x '*.bin' -x jzintv -x jzintv_batch -x .gitkeep -x README.md -x '*.patch' -x svn_revision.c a/src/cfg/cfg.c b/src/cfg/cfg.c
 --- a/src/cfg/cfg.c	2020-07-13 00:03:58.000000000 -0500
 +++ b/src/cfg/cfg.c	2026-08-10 11:50:58.692878501 -0500
 @@ -44,6 +44,8 @@
@@ -777,7 +809,7 @@ diff --color -ruN a/src/cfg/cfg.c b/src/cfg/cfg.c
      /*  Register the debugger.  This _must_ be done last.                   */
      /* -------------------------------------------------------------------- */
      if (cfg->debugging)
-diff --color -ruN a/src/cfg/cfg.h b/src/cfg/cfg.h
+diff --color --color -ruN -x .git -x .claude -x .gitignore -x README -x '*.o' -x '*.a' -x '*.dll' -x '*.exe' -x '*.rom' -x '*.bin' -x jzintv -x jzintv_batch -x .gitkeep -x README.md -x '*.patch' -x svn_revision.c a/src/cfg/cfg.h b/src/cfg/cfg.h
 --- a/src/cfg/cfg.h	2020-07-13 00:03:58.000000000 -0500
 +++ b/src/cfg/cfg.h	2026-08-07 21:18:55.739366061 -0500
 @@ -66,6 +66,7 @@
@@ -788,7 +820,7 @@ diff --color -ruN a/src/cfg/cfg.h b/src/cfg/cfg.h
      t_locutus_wrap locutus;
  
      uint16_t    exec_img[4096 + 4096];
-diff --color -ruN a/src/cfg/mapping.c b/src/cfg/mapping.c
+diff --color --color -ruN -x .git -x .claude -x .gitignore -x README -x '*.o' -x '*.a' -x '*.dll' -x '*.exe' -x '*.rom' -x '*.bin' -x jzintv -x jzintv_batch -x .gitkeep -x README.md -x '*.patch' -x svn_revision.c a/src/cfg/mapping.c b/src/cfg/mapping.c
 --- a/src/cfg/mapping.c	2020-07-13 00:03:58.000000000 -0500
 +++ b/src/cfg/mapping.c	2026-08-07 21:17:45.602652997 -0500
 @@ -35,6 +35,7 @@
@@ -799,7 +831,7 @@ diff --color -ruN a/src/cfg/mapping.c b/src/cfg/mapping.c
  #include "locutus/locutus_adapt.h"
  #include "cheat/cheat.h"
  #include "mapping.h"
-diff --color -ruN a/src/cfg/subMakefile b/src/cfg/subMakefile
+diff --color --color -ruN -x .git -x .claude -x .gitignore -x README -x '*.o' -x '*.a' -x '*.dll' -x '*.exe' -x '*.rom' -x '*.bin' -x jzintv -x jzintv_batch -x .gitkeep -x README.md -x '*.patch' -x svn_revision.c a/src/cfg/subMakefile b/src/cfg/subMakefile
 --- a/src/cfg/subMakefile	2020-06-21 03:56:39.000000000 -0500
 +++ b/src/cfg/subMakefile	2026-08-07 21:17:50.561774091 -0500
 @@ -10,9 +10,10 @@
@@ -822,7 +854,7 @@ diff --color -ruN a/src/cfg/subMakefile b/src/cfg/subMakefile
  
  cfg/usage.$(O): config.h cfg/cfg.h
  
-diff --color -ruN a/src/cfg/usage.c b/src/cfg/usage.c
+diff --color --color -ruN -x .git -x .claude -x .gitignore -x README -x '*.o' -x '*.a' -x '*.dll' -x '*.exe' -x '*.rom' -x '*.bin' -x jzintv -x jzintv_batch -x .gitkeep -x README.md -x '*.patch' -x svn_revision.c a/src/cfg/usage.c b/src/cfg/usage.c
 --- a/src/cfg/usage.c	2020-07-13 00:52:48.000000000 -0500
 +++ b/src/cfg/usage.c	2026-08-09 11:19:52.833582722 -0500
 @@ -234,6 +234,33 @@
@@ -859,7 +891,7 @@ diff --color -ruN a/src/cfg/usage.c b/src/cfg/usage.c
  "    -l      --license             License information"                     "\n"
  " -h -?      --help                This usage info"                         "\n"
                                                                              "\n"
-diff --color -ruN a/src/fujinet/fn_sock.c b/src/fujinet/fn_sock.c
+diff --color --color -ruN -x .git -x .claude -x .gitignore -x README -x '*.o' -x '*.a' -x '*.dll' -x '*.exe' -x '*.rom' -x '*.bin' -x jzintv -x jzintv_batch -x .gitkeep -x README.md -x '*.patch' -x svn_revision.c a/src/fujinet/fn_sock.c b/src/fujinet/fn_sock.c
 --- a/src/fujinet/fn_sock.c	1969-12-31 18:00:00.000000000 -0600
 +++ b/src/fujinet/fn_sock.c	2026-08-07 21:57:15.870416290 -0500
 @@ -0,0 +1,334 @@
@@ -1197,7 +1229,7 @@ diff --color -ruN a/src/fujinet/fn_sock.c b/src/fujinet/fn_sock.c
 +/*  with this program; if not, write to the Free Software Foundation, Inc., */
 +/*  51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.             */
 +/* ======================================================================== */
-diff --color -ruN a/src/fujinet/fn_sock.h b/src/fujinet/fn_sock.h
+diff --color --color -ruN -x .git -x .claude -x .gitignore -x README -x '*.o' -x '*.a' -x '*.dll' -x '*.exe' -x '*.rom' -x '*.bin' -x jzintv -x jzintv_batch -x .gitkeep -x README.md -x '*.patch' -x svn_revision.c a/src/fujinet/fn_sock.h b/src/fujinet/fn_sock.h
 --- a/src/fujinet/fn_sock.h	1969-12-31 18:00:00.000000000 -0600
 +++ b/src/fujinet/fn_sock.h	2026-08-07 21:56:33.099280099 -0500
 @@ -0,0 +1,121 @@
@@ -1322,7 +1354,7 @@ diff --color -ruN a/src/fujinet/fn_sock.h b/src/fujinet/fn_sock.h
 +/*  with this program; if not, write to the Free Software Foundation, Inc., */
 +/*  51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.             */
 +/* ======================================================================== */
-diff --color -ruN a/src/fujinet/fujibus.c b/src/fujinet/fujibus.c
+diff --color --color -ruN -x .git -x .claude -x .gitignore -x README -x '*.o' -x '*.a' -x '*.dll' -x '*.exe' -x '*.rom' -x '*.bin' -x jzintv -x jzintv_batch -x .gitkeep -x README.md -x '*.patch' -x svn_revision.c a/src/fujinet/fujibus.c b/src/fujinet/fujibus.c
 --- a/src/fujinet/fujibus.c	1969-12-31 18:00:00.000000000 -0600
 +++ b/src/fujinet/fujibus.c	2026-08-07 21:12:33.383041199 -0500
 @@ -0,0 +1,337 @@
@@ -1663,7 +1695,7 @@ diff --color -ruN a/src/fujinet/fujibus.c b/src/fujinet/fujibus.c
 +
 +    return true;
 +}
-diff --color -ruN a/src/fujinet/fujibus.h b/src/fujinet/fujibus.h
+diff --color --color -ruN -x .git -x .claude -x .gitignore -x README -x '*.o' -x '*.a' -x '*.dll' -x '*.exe' -x '*.rom' -x '*.bin' -x jzintv -x jzintv_batch -x .gitkeep -x README.md -x '*.patch' -x svn_revision.c a/src/fujinet/fujibus.h b/src/fujinet/fujibus.h
 --- a/src/fujinet/fujibus.h	1969-12-31 18:00:00.000000000 -0600
 +++ b/src/fujinet/fujibus.h	2026-08-08 22:33:44.610272498 -0500
 @@ -0,0 +1,81 @@
@@ -1748,10 +1780,10 @@ diff --color -ruN a/src/fujinet/fujibus.h b/src/fujinet/fujibus.h
 +bool fujibus_selftest(void);
 +
 +#endif /* FUJIBUS_H */
-diff --color -ruN a/src/fujinet/fuji_mailbox.h b/src/fujinet/fuji_mailbox.h
+diff --color --color -ruN -x .git -x .claude -x .gitignore -x README -x '*.o' -x '*.a' -x '*.dll' -x '*.exe' -x '*.rom' -x '*.bin' -x jzintv -x jzintv_batch -x .gitkeep -x README.md -x '*.patch' -x svn_revision.c a/src/fujinet/fuji_mailbox.h b/src/fujinet/fuji_mailbox.h
 --- a/src/fujinet/fuji_mailbox.h	1969-12-31 18:00:00.000000000 -0600
-+++ b/src/fujinet/fuji_mailbox.h	2026-08-19 16:34:14.431078649 -0500
-@@ -0,0 +1,115 @@
++++ b/src/fujinet/fuji_mailbox.h	2026-08-19 18:16:31.557778026 -0500
+@@ -0,0 +1,131 @@
 +#ifndef FUJI_MAILBOX_H
 +#define FUJI_MAILBOX_H
 +
@@ -1841,6 +1873,8 @@ diff --color -ruN a/src/fujinet/fuji_mailbox.h b/src/fujinet/fuji_mailbox.h
 +#define FUJI_BOOT_ERR_MAILBOX   4 // a JLP game's segment/RAM overlaps its own $8000-$9FFF window
 +#define FUJI_BOOT_ERR_CFGBAD    5 // a .cfg stream arrived but had no usable mapping line
 +#define FUJI_BOOT_ERR_RAM       6 // declared RAM exceeds the cart's RAMSIZE budget
++#define FUJI_BOOT_ERR_TOOBIG    7 // ROM larger than this board's cart.ROM[] can stage
++#define FUJI_BOOT_ERR_BANKSW    8 // .rom enable tables flag bank-switched banks (unsupported)
 +
 +#define FUJI_MB_TX         (FUJI_MB_BASE + 0x40)  // Inty: request payload
 +#define FUJI_MB_TX_MAX     256                    // fujicmd.bas sends fixed 256-byte
@@ -1855,6 +1889,20 @@ diff --color -ruN a/src/fujinet/fuji_mailbox.h b/src/fujinet/fuji_mailbox.h
 +                                                   // 256-byte host-slot block and the
 +                                                   // 240-byte AdapterConfigExtended
 +
++// fujibus_transact()'s raw USB receive buffer (fuji_mailbox_service()'s
++// rxbuf) has to be sized separately from FUJI_MB_RX_MAX above: that constant
++// bounds the mailbox's cart.RAM-resident reply window (a real address-space
++// budget), but the same buffer also has to hold every complete SLIP-encoded
++// frame the ESP32 pushes to FUJI_DEVICEID_DBC mid-MOUNT_IMAGE --
++// MediaTypeROM::push_stream() (rs232/diskTypeROM.cpp) streams ROM/.cfg data
++// in DISK_SECTORBUF_SIZE (512) byte NETCMD_WRITE chunks. Decoded that's a
++// 6-byte header + 512 bytes of payload = 518, and SLIP escaping can double
++// that worst-case plus the two frame-delimiter bytes -- 1038 minimum.
++// Undersizing this silently truncates every ROM push's WRITE frames, which
++// fujibus_transact() and the ESP32 side both see as a timed-out/malformed
++// reply rather than anything pointing at the real cause.
++#define FUJIBUS_RAW_RX_MAX 1088
++
 +#define FUJI_MB_STATUS_IDLE  0
 +#define FUJI_MB_STATUS_BUSY  1
 +#define FUJI_MB_STATUS_OK    2
@@ -1867,10 +1915,10 @@ diff --color -ruN a/src/fujinet/fuji_mailbox.h b/src/fujinet/fuji_mailbox.h
 +#define FUJI_MB_ADDR_HI    (FUJI_MB_ADDR_LO + 0x140 + FUJI_MB_RX_MAX - 1)
 +
 +#endif /* FUJI_MAILBOX_H */
-diff --color -ruN a/src/fujinet/fujinet.c b/src/fujinet/fujinet.c
+diff --color --color -ruN -x .git -x .claude -x .gitignore -x README -x '*.o' -x '*.a' -x '*.dll' -x '*.exe' -x '*.rom' -x '*.bin' -x jzintv -x jzintv_batch -x .gitkeep -x README.md -x '*.patch' -x svn_revision.c a/src/fujinet/fujinet.c b/src/fujinet/fujinet.c
 --- a/src/fujinet/fujinet.c	1969-12-31 18:00:00.000000000 -0600
-+++ b/src/fujinet/fujinet.c	2026-08-19 16:45:40.428268865 -0500
-@@ -0,0 +1,1129 @@
++++ b/src/fujinet/fujinet.c	2026-08-19 18:19:31.980530816 -0500
+@@ -0,0 +1,1210 @@
 +/*
 + * ============================================================================
 + *  Title:    FujiNet mailbox peripheral
@@ -2207,6 +2255,7 @@ diff --color -ruN a/src/fujinet/fujinet.c b/src/fujinet/fujinet.c
 +    {
 +        fn->bootdump_rom_bytes = 0;
 +        fn->rom_len = 0;
++        fn->rom_truncated = 0;
 +    }
 +    else
 +    {
@@ -2238,12 +2287,27 @@ diff --color -ruN a/src/fujinet/fujinet.c b/src/fujinet/fujinet.c
 +    if (!data || !len)
 +        return;
 +
++    if (fn->rom_truncated)
++        return;   /*  Already gave up on this push; don't keep trying.     */
++
 +    if (fn->rom_len + len > fn->rom_cap)
 +    {
 +        size_t newcap = fn->rom_cap ? fn->rom_cap * 2 : 4096;
++        uint8_t *grown;
++
 +        while (newcap < fn->rom_len + len)
 +            newcap *= 2;
-+        fn->rom_buf = (uint8_t *)realloc(fn->rom_buf, newcap);
++
++        /*  Assigning realloc()'s result straight back would drop the only  */
++        /*  pointer to the existing image on failure, then memcpy into      */
++        /*  NULL below. Keep what we have and fail the boot instead.        */
++        grown = (uint8_t *)realloc(fn->rom_buf, newcap);
++        if (!grown)
++        {
++            fn->rom_truncated = 1;
++            return;
++        }
++        fn->rom_buf = grown;
 +        fn->rom_cap = newcap;
 +    }
 +    memcpy(fn->rom_buf + fn->rom_len, data, len);
@@ -2476,6 +2540,14 @@ diff --color -ruN a/src/fujinet/fujinet.c b/src/fujinet/fujinet.c
 +        return 0;
 +
 +    icart_t *const ic = (icart_t *)fn->icart;
++
++    /*  Ran out of memory growing rom_buf mid-push: what we hold is a       */
++    /*  short image, and booting it would be worse than saying so.          */
++    if (fn->rom_truncated)
++    {
++        fn->ram[OFS(FUJI_MB_BOOT_ERR)] = FUJI_BOOT_ERR_TRUNCATED;
++        return 0;
++    }
 +
 +    /* Decode/validate the incoming push into a scratch icartrom_t, NOT
 +     * ic->rom directly. ic->rom is still the live, currently-registered
@@ -2762,6 +2834,30 @@ diff --color -ruN a/src/fujinet/fujinet.c b/src/fujinet/fujinet.c
 +}
 +
 +/* ======================================================================== */
++/*  FUJINET_RX_RESYNC -- Discard a partial or unparseable frame and go      */
++/*                       looking for the next delimiter.                    */
++/*                                                                          */
++/*  The RP2040 reference (fujibus_usb.c's fujibus_transact()) keeps rxlen   */
++/*  and seen_end as *locals* inside one deadline loop, so an over-long or   */
++/*  malformed frame just times the transaction out and the next one starts  */
++/*  clean. Here they live in fujinet_t and persist across ticks, because    */
++/*  a frame can straddle any number of them. That means nothing clears      */
++/*  them on the failure paths: once rxlen reaches sizeof(rxbuf) without     */
++/*  two ENDs, the accumulate loop's own `rxlen < sizeof(rxbuf)` guard is    */
++/*  false on every subsequent tick -- not one more byte is ever drained,    */
++/*  no frame is ever parsed, no DBC ACK is ever sent, and a ROM push wedges */
++/*  forever with FUJI_MB_BOOT_PCT frozen at whatever it last reached (the   */
++/*  console sits on "BOOTING / DO NOT POWER OFF" with a stuck bar). Same    */
++/*  for a parse failure, which additionally leaves the byte stream desynced */
++/*  mid-frame so every following parse fails too.                           */
++/* ======================================================================== */
++LOCAL void fujinet_rx_resync(fujinet_t *const fn)
++{
++    fn->rxlen    = 0;
++    fn->seen_end = 0;
++}
++
++/* ======================================================================== */
 +/*  FUJINET_TICK      -- periph.tick: drives the state machine.             */
 +/* ======================================================================== */
 +LOCAL uint32_t fujinet_tick(periph_t *const per, uint32_t len)
@@ -2871,9 +2967,41 @@ diff --color -ruN a/src/fujinet/fujinet.c b/src/fujinet/fujinet.c
 +                if (n == 0)
 +                    break;   /*  Would block; try again next tick.          */
 +
++                /*  A leading END, or a run of them: the encoder brackets   */
++                /*  every frame with one on each side, so back-to-back      */
++                /*  frames put two 0xC0 in a row on the wire. Collapsing    */
++                /*  them here (rather than counting the second as this      */
++                /*  frame's trailing END and handing the parser an empty    */
++                /*  "C0 C0") is what standard SLIP does with empty frames,  */
++                /*  and it's also how a resync lands back on a boundary     */
++                /*  without caring which of the two delimiters it found.    */
++                if (b == 0xC0 && fn->rxlen <= 1 && fn->seen_end <= 1)
++                {
++                    fn->rxbuf[0] = b;
++                    fn->rxlen    = 1;
++                    fn->seen_end = 1;
++                    continue;
++                }
++
 +                fn->rxbuf[fn->rxlen++] = b;
 +                if (b == 0xC0 && ++fn->seen_end == 2)
 +                    break;
++            }
++
++            /*  Buffer filled without ever closing the frame. Drop it and   */
++            /*  resync instead of returning with the loop guard permanently */
++            /*  false -- see fujinet_rx_resync(). The bridge is still       */
++            /*  blocking on an ACK we can't send for a frame we don't have, */
++            /*  so it will abort the push on its own timeout and we report  */
++            /*  that through the normal CLOSE path.                         */
++            if (fn->seen_end < 2 && fn->rxlen >= sizeof(fn->rxbuf))
++            {
++                if (fn->debug)
++                    jzp_printf("FUJINET: oversized frame (%u bytes, no END) "
++                               "-- discarding and resyncing\n",
++                               (unsigned)fn->rxlen);
++                fujinet_rx_resync(fn);
++                break;
 +            }
 +
 +            if (fn->seen_end < 2)
@@ -2881,6 +3009,7 @@ diff --color -ruN a/src/fujinet/fujinet.c b/src/fujinet/fujinet.c
 +
 +            if (!fujibus_parse_reply(fn->rxbuf, fn->rxlen, &reply))
 +            {
++                fujinet_rx_resync(fn);
 +                fujinet_finish_txn(fn, FB_EBADFRAME, NULL);
 +                break;
 +            }
@@ -3000,7 +3129,7 @@ diff --color -ruN a/src/fujinet/fujinet.c b/src/fujinet/fujinet.c
 +/*  with this program; if not, write to the Free Software Foundation, Inc., */
 +/*  51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.             */
 +/* ======================================================================== */
-diff --color -ruN a/src/fujinet/fujinet_config_rom.c b/src/fujinet/fujinet_config_rom.c
+diff --color --color -ruN -x .git -x .claude -x .gitignore -x README -x '*.o' -x '*.a' -x '*.dll' -x '*.exe' -x '*.rom' -x '*.bin' -x jzintv -x jzintv_batch -x .gitkeep -x README.md -x '*.patch' -x svn_revision.c a/src/fujinet/fujinet_config_rom.c b/src/fujinet/fujinet_config_rom.c
 --- a/src/fujinet/fujinet_config_rom.c	1969-12-31 18:00:00.000000000 -0600
 +++ b/src/fujinet/fujinet_config_rom.c	2026-08-19 16:34:14.431894004 -0500
 @@ -0,0 +1,1256 @@
@@ -4260,7 +4389,7 @@ diff --color -ruN a/src/fujinet/fujinet_config_rom.c b/src/fujinet/fujinet_confi
 +    0x07, 0x07, 0x07, 0x07, 0x07, 0x07, 0x07, 0x07, 0x07, 0x07, 0x07, 0x07, 0x07, 0x07, 0x07, 0x07,
 +    0x07, 0x05, 0x07, 0x07, 0x03, 0x07, 0x07, 0x07, 0x07, 0x07, 0x07, 0xEC, 0x17,
 +};
-diff --color -ruN a/src/fujinet/fujinet_config_rom.h b/src/fujinet/fujinet_config_rom.h
+diff --color --color -ruN -x .git -x .claude -x .gitignore -x README -x '*.o' -x '*.a' -x '*.dll' -x '*.exe' -x '*.rom' -x '*.bin' -x jzintv -x jzintv_batch -x .gitkeep -x README.md -x '*.patch' -x svn_revision.c a/src/fujinet/fujinet_config_rom.h b/src/fujinet/fujinet_config_rom.h
 --- a/src/fujinet/fujinet_config_rom.h	1969-12-31 18:00:00.000000000 -0600
 +++ b/src/fujinet/fujinet_config_rom.h	2026-08-11 20:36:40.459478089 -0500
 @@ -0,0 +1,14 @@
@@ -4278,10 +4407,10 @@ diff --color -ruN a/src/fujinet/fujinet_config_rom.h b/src/fujinet/fujinet_confi
 +extern const long          fujinet_config_rom_len;
 +
 +#endif /* FUJINET_CONFIG_ROM_H_ */
-diff --color -ruN a/src/fujinet/fujinet.h b/src/fujinet/fujinet.h
+diff --color --color -ruN -x .git -x .claude -x .gitignore -x README -x '*.o' -x '*.a' -x '*.dll' -x '*.exe' -x '*.rom' -x '*.bin' -x jzintv -x jzintv_batch -x .gitkeep -x README.md -x '*.patch' -x svn_revision.c a/src/fujinet/fujinet.h b/src/fujinet/fujinet.h
 --- a/src/fujinet/fujinet.h	1969-12-31 18:00:00.000000000 -0600
-+++ b/src/fujinet/fujinet.h	2026-08-19 16:34:14.430103992 -0500
-@@ -0,0 +1,161 @@
++++ b/src/fujinet/fujinet.h	2026-08-19 18:18:13.466063914 -0500
+@@ -0,0 +1,167 @@
 +/*
 + * ============================================================================
 + *  Title:    FujiNet mailbox peripheral
@@ -4358,7 +4487,11 @@ diff --color -ruN a/src/fujinet/fujinet.h b/src/fujinet/fujinet.h
 +    size_t          txlen;
 +    size_t          txsent;
 +
-+    uint8_t         rxbuf[FUJI_MB_RX_MAX + 128]; /* Encoded SLIP reply.    */
++    /*  Sized from FUJIBUS_RAW_RX_MAX, NOT FUJI_MB_RX_MAX: this buffer     */
++    /*  holds whole SLIP-encoded frames off the wire, and the DBC ROM      */
++    /*  push's NETCMD_WRITE frames are far larger than any mailbox reply.  */
++    /*  See the comment on FUJIBUS_RAW_RX_MAX in fuji_mailbox.h.           */
++    uint8_t         rxbuf[FUJIBUS_RAW_RX_MAX];   /* Encoded SLIP reply.    */
 +    size_t          rxlen;
 +    unsigned        seen_end;
 +
@@ -4392,6 +4525,8 @@ diff --color -ruN a/src/fujinet/fujinet.h b/src/fujinet/fujinet.h
 +    uint8_t  *rom_buf;       /* Growable heap buffer for the in-flight ROM.*/
 +    size_t    rom_len;
 +    size_t    rom_cap;
++    int       rom_truncated; /* Couldn't grow rom_buf -- fail TRUNCATED    */
++                              /* rather than boot a short image.           */
 +
 +    uint8_t   cfg_buf[4096]; /* .cfg sibling text; mirrors inty_cart.c's   */
 +    size_t    cfg_len;       /* fixed CFG_BUF_MAX -- a .cfg is well under  */
@@ -4443,7 +4578,7 @@ diff --color -ruN a/src/fujinet/fujinet.h b/src/fujinet/fujinet.h
 +/*  with this program; if not, write to the Free Software Foundation, Inc., */
 +/*  51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.             */
 +/* ======================================================================== */
-diff --color -ruN a/src/fujinet/mkconfigrom.py b/src/fujinet/mkconfigrom.py
+diff --color --color -ruN -x .git -x .claude -x .gitignore -x README -x '*.o' -x '*.a' -x '*.dll' -x '*.exe' -x '*.rom' -x '*.bin' -x jzintv -x jzintv_batch -x .gitkeep -x README.md -x '*.patch' -x svn_revision.c a/src/fujinet/mkconfigrom.py b/src/fujinet/mkconfigrom.py
 --- a/src/fujinet/mkconfigrom.py	1969-12-31 18:00:00.000000000 -0600
 +++ b/src/fujinet/mkconfigrom.py	2026-08-09 11:17:55.793111869 -0500
 @@ -0,0 +1,113 @@
@@ -4560,7 +4695,7 @@ diff --color -ruN a/src/fujinet/mkconfigrom.py b/src/fujinet/mkconfigrom.py
 +
 +if __name__ == "__main__":
 +    sys.exit(main())
-diff --color -ruN a/src/fujinet/subMakefile b/src/fujinet/subMakefile
+diff --color --color -ruN -x .git -x .claude -x .gitignore -x README -x '*.o' -x '*.a' -x '*.dll' -x '*.exe' -x '*.rom' -x '*.bin' -x jzintv -x jzintv_batch -x .gitkeep -x README.md -x '*.patch' -x svn_revision.c a/src/fujinet/subMakefile b/src/fujinet/subMakefile
 --- a/src/fujinet/subMakefile	1969-12-31 18:00:00.000000000 -0600
 +++ b/src/fujinet/subMakefile	2026-08-09 11:18:53.136572196 -0500
 @@ -0,0 +1,31 @@
@@ -4595,7 +4730,7 @@ diff --color -ruN a/src/fujinet/subMakefile b/src/fujinet/subMakefile
 +fujinet-config-rom:
 +	python3 fujinet/mkconfigrom.py $(FUJINET_CONFIG_ROM) \
 +	    fujinet/fujinet_config_rom.c fujinet/fujinet_config_rom.h
-diff --color -ruN a/src/icart/icart.c b/src/icart/icart.c
+diff --color --color -ruN -x .git -x .claude -x .gitignore -x README -x '*.o' -x '*.a' -x '*.dll' -x '*.exe' -x '*.rom' -x '*.bin' -x jzintv -x jzintv_batch -x .gitkeep -x README.md -x '*.patch' -x svn_revision.c a/src/icart/icart.c b/src/icart/icart.c
 --- a/src/icart/icart.c	2020-07-13 00:03:58.000000000 -0500
 +++ b/src/icart/icart.c	2026-08-19 16:45:30.693020385 -0500
 @@ -201,25 +201,35 @@
@@ -4773,7 +4908,7 @@ diff --color -ruN a/src/icart/icart.c b/src/icart/icart.c
  /*  This program is free software; you can redistribute it and/or modify    */
  /*  it under the terms of the GNU General Public License as published by    */
  /*  the Free Software Foundation; either version 2 of the License, or       */
-diff --color -ruN a/src/icart/icart.h b/src/icart/icart.h
+diff --color --color -ruN -x .git -x .claude -x .gitignore -x README -x '*.o' -x '*.a' -x '*.dll' -x '*.exe' -x '*.rom' -x '*.bin' -x jzintv -x jzintv_batch -x .gitkeep -x README.md -x '*.patch' -x svn_revision.c a/src/icart/icart.h b/src/icart/icart.h
 --- a/src/icart/icart.h	2020-07-13 00:03:58.000000000 -0500
 +++ b/src/icart/icart.h	2026-08-19 16:45:20.860769427 -0500
 @@ -138,6 +138,18 @@
@@ -4822,7 +4957,7 @@ diff --color -ruN a/src/icart/icart.h b/src/icart/icart.h
  #endif
  /* ======================================================================== */
  /*  This program is free software; you can redistribute it and/or modify    */
-diff --color -ruN a/src/jzintv.c b/src/jzintv.c
+diff --color --color -ruN -x .git -x .claude -x .gitignore -x README -x '*.o' -x '*.a' -x '*.dll' -x '*.exe' -x '*.rom' -x '*.bin' -x jzintv -x jzintv_batch -x .gitkeep -x README.md -x '*.patch' -x svn_revision.c a/src/jzintv.c b/src/jzintv.c
 --- a/src/jzintv.c	2020-07-13 00:03:58.000000000 -0500
 +++ b/src/jzintv.c	2026-08-07 21:58:34.354662425 -0500
 @@ -38,6 +38,7 @@
@@ -4833,7 +4968,7 @@ diff --color -ruN a/src/jzintv.c b/src/jzintv.c
  #include "locutus/locutus_adapt.h"
  #include "cheat/cheat.h"
  #include "cfg/mapping.h"
-diff --color -ruN a/src/jzintv_em.c b/src/jzintv_em.c
+diff --color --color -ruN -x .git -x .claude -x .gitignore -x README -x '*.o' -x '*.a' -x '*.dll' -x '*.exe' -x '*.rom' -x '*.bin' -x jzintv -x jzintv_batch -x .gitkeep -x README.md -x '*.patch' -x svn_revision.c a/src/jzintv_em.c b/src/jzintv_em.c
 --- a/src/jzintv_em.c	2020-07-13 00:03:58.000000000 -0500
 +++ b/src/jzintv_em.c	2026-08-07 21:18:41.163686272 -0500
 @@ -35,6 +35,7 @@
@@ -4844,7 +4979,7 @@ diff --color -ruN a/src/jzintv_em.c b/src/jzintv_em.c
  #include "locutus/locutus_adapt.h"
  #include "cheat/cheat.h"
  #include "cfg/mapping.h"
-diff --color -ruN a/src/Makefile.common b/src/Makefile.common
+diff --color --color -ruN -x .git -x .claude -x .gitignore -x README -x '*.o' -x '*.a' -x '*.dll' -x '*.exe' -x '*.rom' -x '*.bin' -x jzintv -x jzintv_batch -x .gitkeep -x README.md -x '*.patch' -x svn_revision.c a/src/Makefile.common b/src/Makefile.common
 --- a/src/Makefile.common	2020-06-24 02:42:29.000000000 -0500
 +++ b/src/Makefile.common	2026-08-07 21:17:23.588578867 -0500
 @@ -57,6 +57,7 @@
@@ -4855,7 +4990,7 @@ diff --color -ruN a/src/Makefile.common b/src/Makefile.common
   include scale/subMakefile      # Scale2x/3x/4x
   include locutus/subMakefile    # Locutus / LUIGI support
   include zlib/subMakefile       # deflate compression for AVI support
-diff --color -ruN a/src/Makefile.emscripten_sdl1 b/src/Makefile.emscripten_sdl1
+diff --color --color -ruN -x .git -x .claude -x .gitignore -x README -x '*.o' -x '*.a' -x '*.dll' -x '*.exe' -x '*.rom' -x '*.bin' -x jzintv -x jzintv_batch -x .gitkeep -x README.md -x '*.patch' -x svn_revision.c a/src/Makefile.emscripten_sdl1 b/src/Makefile.emscripten_sdl1
 --- a/src/Makefile.emscripten_sdl1	2020-06-21 17:34:55.000000000 -0500
 +++ b/src/Makefile.emscripten_sdl1	2026-08-07 21:18:46.310700627 -0500
 @@ -109,5 +109,6 @@
@@ -4865,7 +5000,7 @@ diff --color -ruN a/src/Makefile.emscripten_sdl1 b/src/Makefile.emscripten_sdl1
 +jzintv_em.$(O): fujinet/fujinet.h fujinet/fuji_mailbox.h fujinet/fn_sock.h
  jzintv_em.$(O): emscripten/web_files.h
  
-diff --color -ruN a/src/Makefile.emscripten_sdl2 b/src/Makefile.emscripten_sdl2
+diff --color --color -ruN -x .git -x .claude -x .gitignore -x README -x '*.o' -x '*.a' -x '*.dll' -x '*.exe' -x '*.rom' -x '*.bin' -x jzintv -x jzintv_batch -x .gitkeep -x README.md -x '*.patch' -x svn_revision.c a/src/Makefile.emscripten_sdl2 b/src/Makefile.emscripten_sdl2
 --- a/src/Makefile.emscripten_sdl2	2020-06-21 17:34:55.000000000 -0500
 +++ b/src/Makefile.emscripten_sdl2	2026-08-07 21:18:46.309928209 -0500
 @@ -109,5 +109,6 @@
@@ -4875,7 +5010,7 @@ diff --color -ruN a/src/Makefile.emscripten_sdl2 b/src/Makefile.emscripten_sdl2
 +jzintv_em.$(O): fujinet/fujinet.h fujinet/fuji_mailbox.h fujinet/fn_sock.h
  jzintv_em.$(O): emscripten/web_files.h
  
-diff --color -ruN a/src/periph/periph.c b/src/periph/periph.c
+diff --color --color -ruN -x .git -x .claude -x .gitignore -x README -x '*.o' -x '*.a' -x '*.dll' -x '*.exe' -x '*.rom' -x '*.bin' -x jzintv -x jzintv_batch -x .gitkeep -x README.md -x '*.patch' -x svn_revision.c a/src/periph/periph.c b/src/periph/periph.c
 --- a/src/periph/periph.c	2020-07-13 00:03:58.000000000 -0500
 +++ b/src/periph/periph.c	2026-08-19 16:45:07.455427269 -0500
 @@ -308,6 +308,47 @@
@@ -4926,7 +5061,7 @@ diff --color -ruN a/src/periph/periph.c b/src/periph/periph.c
  
  /*
   * ============================================================================
-diff --color -ruN a/src/periph/periph.h b/src/periph/periph.h
+diff --color --color -ruN -x .git -x .claude -x .gitignore -x README -x '*.o' -x '*.a' -x '*.dll' -x '*.exe' -x '*.rom' -x '*.bin' -x jzintv -x jzintv_batch -x .gitkeep -x README.md -x '*.patch' -x svn_revision.c a/src/periph/periph.h b/src/periph/periph.h
 --- a/src/periph/periph.h	2020-07-13 00:03:58.000000000 -0500
 +++ b/src/periph/periph.h	2026-08-19 16:44:53.358067446 -0500
 @@ -159,6 +159,28 @@
@@ -4958,7 +5093,7 @@ diff --color -ruN a/src/periph/periph.h b/src/periph/periph.h
  /*  PERIPH_READ      -- Perform a read on a peripheral bus as a CPU.        */
  /*  PERIPH_PEEK      -- Perform a read on a peripheral bus via backdoor.    */
  /* ======================================================================== */
-diff --color -ruN a/src/plat/plat_lib.c b/src/plat/plat_lib.c
+diff --color --color -ruN -x .git -x .claude -x .gitignore -x README -x '*.o' -x '*.a' -x '*.dll' -x '*.exe' -x '*.rom' -x '*.bin' -x jzintv -x jzintv_batch -x .gitkeep -x README.md -x '*.patch' -x svn_revision.c a/src/plat/plat_lib.c b/src/plat/plat_lib.c
 --- a/src/plat/plat_lib.c	2020-07-13 00:03:58.000000000 -0500
 +++ b/src/plat/plat_lib.c	2026-05-01 15:08:25.185379283 -0500
 @@ -18,7 +18,7 @@

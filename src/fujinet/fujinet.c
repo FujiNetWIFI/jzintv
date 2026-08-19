@@ -334,6 +334,7 @@ LOCAL void fujinet_dbc_stream_open(fujinet_t *const fn, int stream)
     {
         fn->bootdump_rom_bytes = 0;
         fn->rom_len = 0;
+        fn->rom_truncated = 0;
     }
     else
     {
@@ -365,12 +366,27 @@ LOCAL void fujinet_rom_buf_append(fujinet_t *const fn,
     if (!data || !len)
         return;
 
+    if (fn->rom_truncated)
+        return;   /*  Already gave up on this push; don't keep trying.     */
+
     if (fn->rom_len + len > fn->rom_cap)
     {
         size_t newcap = fn->rom_cap ? fn->rom_cap * 2 : 4096;
+        uint8_t *grown;
+
         while (newcap < fn->rom_len + len)
             newcap *= 2;
-        fn->rom_buf = (uint8_t *)realloc(fn->rom_buf, newcap);
+
+        /*  Assigning realloc()'s result straight back would drop the only  */
+        /*  pointer to the existing image on failure, then memcpy into      */
+        /*  NULL below. Keep what we have and fail the boot instead.        */
+        grown = (uint8_t *)realloc(fn->rom_buf, newcap);
+        if (!grown)
+        {
+            fn->rom_truncated = 1;
+            return;
+        }
+        fn->rom_buf = grown;
         fn->rom_cap = newcap;
     }
     memcpy(fn->rom_buf + fn->rom_len, data, len);
@@ -603,6 +619,14 @@ LOCAL int fujinet_apply_rom(fujinet_t *const fn)
         return 0;
 
     icart_t *const ic = (icart_t *)fn->icart;
+
+    /*  Ran out of memory growing rom_buf mid-push: what we hold is a       */
+    /*  short image, and booting it would be worse than saying so.          */
+    if (fn->rom_truncated)
+    {
+        fn->ram[OFS(FUJI_MB_BOOT_ERR)] = FUJI_BOOT_ERR_TRUNCATED;
+        return 0;
+    }
 
     /* Decode/validate the incoming push into a scratch icartrom_t, NOT
      * ic->rom directly. ic->rom is still the live, currently-registered
@@ -889,6 +913,30 @@ LOCAL void fujinet_handle_dbc_frame(fujinet_t *const fn, const fb_reply_t *req)
 }
 
 /* ======================================================================== */
+/*  FUJINET_RX_RESYNC -- Discard a partial or unparseable frame and go      */
+/*                       looking for the next delimiter.                    */
+/*                                                                          */
+/*  The RP2040 reference (fujibus_usb.c's fujibus_transact()) keeps rxlen   */
+/*  and seen_end as *locals* inside one deadline loop, so an over-long or   */
+/*  malformed frame just times the transaction out and the next one starts  */
+/*  clean. Here they live in fujinet_t and persist across ticks, because    */
+/*  a frame can straddle any number of them. That means nothing clears      */
+/*  them on the failure paths: once rxlen reaches sizeof(rxbuf) without     */
+/*  two ENDs, the accumulate loop's own `rxlen < sizeof(rxbuf)` guard is    */
+/*  false on every subsequent tick -- not one more byte is ever drained,    */
+/*  no frame is ever parsed, no DBC ACK is ever sent, and a ROM push wedges */
+/*  forever with FUJI_MB_BOOT_PCT frozen at whatever it last reached (the   */
+/*  console sits on "BOOTING / DO NOT POWER OFF" with a stuck bar). Same    */
+/*  for a parse failure, which additionally leaves the byte stream desynced */
+/*  mid-frame so every following parse fails too.                           */
+/* ======================================================================== */
+LOCAL void fujinet_rx_resync(fujinet_t *const fn)
+{
+    fn->rxlen    = 0;
+    fn->seen_end = 0;
+}
+
+/* ======================================================================== */
 /*  FUJINET_TICK      -- periph.tick: drives the state machine.             */
 /* ======================================================================== */
 LOCAL uint32_t fujinet_tick(periph_t *const per, uint32_t len)
@@ -998,9 +1046,41 @@ LOCAL uint32_t fujinet_tick(periph_t *const per, uint32_t len)
                 if (n == 0)
                     break;   /*  Would block; try again next tick.          */
 
+                /*  A leading END, or a run of them: the encoder brackets   */
+                /*  every frame with one on each side, so back-to-back      */
+                /*  frames put two 0xC0 in a row on the wire. Collapsing    */
+                /*  them here (rather than counting the second as this      */
+                /*  frame's trailing END and handing the parser an empty    */
+                /*  "C0 C0") is what standard SLIP does with empty frames,  */
+                /*  and it's also how a resync lands back on a boundary     */
+                /*  without caring which of the two delimiters it found.    */
+                if (b == 0xC0 && fn->rxlen <= 1 && fn->seen_end <= 1)
+                {
+                    fn->rxbuf[0] = b;
+                    fn->rxlen    = 1;
+                    fn->seen_end = 1;
+                    continue;
+                }
+
                 fn->rxbuf[fn->rxlen++] = b;
                 if (b == 0xC0 && ++fn->seen_end == 2)
                     break;
+            }
+
+            /*  Buffer filled without ever closing the frame. Drop it and   */
+            /*  resync instead of returning with the loop guard permanently */
+            /*  false -- see fujinet_rx_resync(). The bridge is still       */
+            /*  blocking on an ACK we can't send for a frame we don't have, */
+            /*  so it will abort the push on its own timeout and we report  */
+            /*  that through the normal CLOSE path.                         */
+            if (fn->seen_end < 2 && fn->rxlen >= sizeof(fn->rxbuf))
+            {
+                if (fn->debug)
+                    jzp_printf("FUJINET: oversized frame (%u bytes, no END) "
+                               "-- discarding and resyncing\n",
+                               (unsigned)fn->rxlen);
+                fujinet_rx_resync(fn);
+                break;
             }
 
             if (fn->seen_end < 2)
@@ -1008,6 +1088,7 @@ LOCAL uint32_t fujinet_tick(periph_t *const per, uint32_t len)
 
             if (!fujibus_parse_reply(fn->rxbuf, fn->rxlen, &reply))
             {
+                fujinet_rx_resync(fn);
                 fujinet_finish_txn(fn, FB_EBADFRAME, NULL);
                 break;
             }

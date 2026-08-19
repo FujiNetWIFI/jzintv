@@ -2,6 +2,48 @@ Release notes for the FujiNet fork.
 Based on upstream jzIntv 20200712 (SVN r2110).  See ReleaseNotes_20200712.txt
 and earlier ReleaseNotes_*.txt files for the upstream emulator's history.
 
+-------------------------------------------------
+ ROM pushes wedging partway through ("BOOTING"):
+-------------------------------------------------
+
+A pushed cart could stop dead partway through the transfer, leaving the
+console on the config ROM's "BOOTING / DO NOT POWER OFF" screen with the
+progress bar frozen (95% for Deep Pockets, other titles elsewhere) and the
+title line drawn as garbage.  Deterministic per title: Deep Pockets, Body
+Slam, Spiker, Stadium Mud Buggies, Super Pro Decathlon, Super Pro Football
+and Pole Position hung, while Chip Shot, Slam Dunk, Commando, Diner and
+Hover Force pushed fine.  Each affected ROM loaded and played correctly
+when passed to jzIntv directly as bin+cfg, so neither the images nor their
+mappings were at fault.
+
+*   src/fujinet/fujinet.h: the raw receive buffer was sized
+    FUJI_MB_RX_MAX + 128 = 640 bytes.  That constant bounds the *mailbox's*
+    reply window in cartridge RAM, an address-space budget -- but the same
+    buffer also has to hold whole SLIP-encoded frames off the wire, and the
+    ROM push's NETCMD_WRITE frames carry DISK_SECTORBUF_SIZE (512) bytes of
+    payload.  Decoded that is a 6-byte header + 512 = 518; SLIP escaping of
+    0xC0/0xDB can nearly double it, 1038 worst case.  A chunk of graphics
+    data with a long run of 0xC0 -- an ordinary two-pixel column pattern --
+    overflows 640 comfortably.  Now sized from FUJIBUS_RAW_RX_MAX (1088),
+    backported from the RP2040 firmware's fuji_mailbox.h along with its
+    rationale and the FUJI_BOOT_ERR_TOOBIG / _BANKSW codes.
+*   src/fujinet/fujinet.c: that overflow was unrecoverable, which is what
+    turned it into a hang rather than a failed boot.  The RP2040 reference
+    keeps its rxlen/seen_end as locals inside one deadline loop, so an
+    over-long frame simply times the transaction out and the next one
+    starts clean.  Here they live in fujinet_t and persist across ticks
+    (a frame can straddle any number of them), and nothing reset them on
+    the failure paths -- so once rxlen reached sizeof(rxbuf) without two
+    frame delimiters, the accumulate loop's own guard was false on every
+    subsequent tick: not one more byte drained, no frame parsed, no DBC ACK
+    sent, ever.  New fujinet_rx_resync() on both the buffer-full and
+    parse-failure paths.  Back-to-back frame delimiters are also collapsed
+    now, the way SLIP treats empty frames.
+*   src/fujinet/fujinet.c: fujinet_rom_buf_append() assigned realloc()'s
+    result straight back over the only pointer to the in-flight image, so a
+    failed grow leaked it and then memcpy'd into NULL.  It now keeps the
+    existing buffer and fails the boot with FUJI_BOOT_ERR_TRUNCATED.
+
 ---------------------------------
  Booting the larger cartridges:
 ---------------------------------

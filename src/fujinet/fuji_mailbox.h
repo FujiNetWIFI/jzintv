@@ -87,6 +87,8 @@
 #define FUJI_BOOT_ERR_MAILBOX   4 // a JLP game's segment/RAM overlaps its own $8000-$9FFF window
 #define FUJI_BOOT_ERR_CFGBAD    5 // a .cfg stream arrived but had no usable mapping line
 #define FUJI_BOOT_ERR_RAM       6 // declared RAM exceeds the cart's RAMSIZE budget
+#define FUJI_BOOT_ERR_TOOBIG    7 // ROM larger than this board's cart.ROM[] can stage
+#define FUJI_BOOT_ERR_BANKSW    8 // .rom enable tables flag bank-switched banks (unsupported)
 
 #define FUJI_MB_TX         (FUJI_MB_BASE + 0x40)  // Inty: request payload
 #define FUJI_MB_TX_MAX     256                    // fujicmd.bas sends fixed 256-byte
@@ -100,6 +102,20 @@
 #define FUJI_MB_RX_MAX      512                   // largest replies in use today: the
                                                    // 256-byte host-slot block and the
                                                    // 240-byte AdapterConfigExtended
+
+// fujibus_transact()'s raw USB receive buffer (fuji_mailbox_service()'s
+// rxbuf) has to be sized separately from FUJI_MB_RX_MAX above: that constant
+// bounds the mailbox's cart.RAM-resident reply window (a real address-space
+// budget), but the same buffer also has to hold every complete SLIP-encoded
+// frame the ESP32 pushes to FUJI_DEVICEID_DBC mid-MOUNT_IMAGE --
+// MediaTypeROM::push_stream() (rs232/diskTypeROM.cpp) streams ROM/.cfg data
+// in DISK_SECTORBUF_SIZE (512) byte NETCMD_WRITE chunks. Decoded that's a
+// 6-byte header + 512 bytes of payload = 518, and SLIP escaping can double
+// that worst-case plus the two frame-delimiter bytes -- 1038 minimum.
+// Undersizing this silently truncates every ROM push's WRITE frames, which
+// fujibus_transact() and the ESP32 side both see as a timed-out/malformed
+// reply rather than anything pointing at the real cause.
+#define FUJIBUS_RAW_RX_MAX 1088
 
 #define FUJI_MB_STATUS_IDLE  0
 #define FUJI_MB_STATUS_BUSY  1

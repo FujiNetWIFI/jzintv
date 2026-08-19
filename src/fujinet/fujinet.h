@@ -74,7 +74,11 @@ typedef struct fujinet_t
     size_t          txlen;
     size_t          txsent;
 
-    uint8_t         rxbuf[FUJI_MB_RX_MAX + 128]; /* Encoded SLIP reply.    */
+    /*  Sized from FUJIBUS_RAW_RX_MAX, NOT FUJI_MB_RX_MAX: this buffer     */
+    /*  holds whole SLIP-encoded frames off the wire, and the DBC ROM      */
+    /*  push's NETCMD_WRITE frames are far larger than any mailbox reply.  */
+    /*  See the comment on FUJIBUS_RAW_RX_MAX in fuji_mailbox.h.           */
+    uint8_t         rxbuf[FUJIBUS_RAW_RX_MAX];   /* Encoded SLIP reply.    */
     size_t          rxlen;
     unsigned        seen_end;
 
@@ -108,6 +112,8 @@ typedef struct fujinet_t
     uint8_t  *rom_buf;       /* Growable heap buffer for the in-flight ROM.*/
     size_t    rom_len;
     size_t    rom_cap;
+    int       rom_truncated; /* Couldn't grow rom_buf -- fail TRUNCATED    */
+                              /* rather than boot a short image.           */
 
     uint8_t   cfg_buf[4096]; /* .cfg sibling text; mirrors inty_cart.c's   */
     size_t    cfg_len;       /* fixed CFG_BUF_MAX -- a .cfg is well under  */
