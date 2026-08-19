@@ -2,6 +2,42 @@ Release notes for the FujiNet fork.
 Based on upstream jzIntv 20200712 (SVN r2110).  See ReleaseNotes_20200712.txt
 and earlier ReleaseNotes_*.txt files for the upstream emulator's history.
 
+---------------------------------
+ Booting the larger cartridges:
+---------------------------------
+
+The 32K and 48K titles (Diner, Hover Force, and the rest of the INTV-era
+sports/action carts) failed to boot from a FujiNet push.  Fixed by bringing
+the boot receiver in line with the RP2040 firmware, plus one problem that
+only exists in the emulator:
+
+*   .cfg mappings are now clamped at end-of-file, matching SDK-1600
+    bin2rom.  The published .cfg collections describe each title's largest
+    layout and rely on ranges past EOF simply falling away; the old parser
+    dropped any such line whole, so a 32K cart lost its $9000 segment
+    entirely.
+*   A mapping that covers the FujiNet mailbox window ($9C00-$9F3F) no
+    longer rejects the boot.  The game starts with the mailbox disabled for
+    the session -- reads return the bus AND-identity so the game's own ROM
+    reads through, writes drop -- restored only by a session restart.  This
+    is the policy the RP2040 firmware now applies.  Nearly every 32K/48K
+    cart maps 12K at $9000 and so lands in this case.
+*   [memattr] cartridge RAM declarations are parsed (8- or 16-bit, nothing
+    below $4000, total capped at the hardware's 0x2800-word budget).
+*   The size-guess table (used when no .cfg arrives) gained the 40KB
+    (8K@$5000 + 12K@$D000) and 48KB (8K/12K/4K INTV) shapes.
+*   An abort-CLOSE (0x01 payload) from the FujiNet side now discards a
+    failed push instead of booting partial data, and the .cfg is consumed
+    per push so a stale sidecar can't leak onto the next mount.
+*   periph/periph.c, icart/icart.c: new periph_unregister() /
+    icart_unregister().  periph_register() only ever adds to the bus
+    address decode, which is all a machine built once at startup needs --
+    but the FujiNet hot-swap re-registers the same icart_t over a new
+    memory map, and the outgoing cart's ranges stayed bound forever.  On
+    the Intellivision's wire-AND bus the CPU then saw the AND of old and
+    new: the config ROM's 8-bit RAM window at $8000-$9BFF silently masked
+    the high byte off every pushed game with a segment there.
+
 ---------------
  New features:
 ---------------

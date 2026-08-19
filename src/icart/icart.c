@@ -508,6 +508,34 @@ int icart_register
 }
 
 /* ======================================================================== */
+/*  ICART_UNREGISTER -- Undoes icart_register()'s address decode bindings.  */
+/*                      See icart.h for why.                                */
+/* ======================================================================== */
+void icart_unregister
+(
+    icart_t      *const ic,
+    periph_bus_t *const bus
+)
+{
+    if (!ic || !bus)
+        return;
+
+    /*  Same set icart_register() picks from, plus the base/bankswitch      */
+    /*  peripheral it always registers.                                     */
+    periph_t *const p[13] =
+    {
+        &(ic->base),
+        &(ic->r),   &(ic->w),   &(ic->rw),
+        &(ic->rn),  &(ic->wn),  &(ic->rwn),
+        &(ic->rb),  &(ic->wb),  &(ic->rwb),
+        &(ic->rnb), &(ic->wnb), &(ic->rwnb)
+    };
+
+    for (unsigned i = 0; i < sizeof(p) / sizeof(p[0]); i++)
+        periph_unregister(bus, p[i]);
+}
+
+/* ======================================================================== */
 /*  This program is free software; you can redistribute it and/or modify    */
 /*  it under the terms of the GNU General Public License as published by    */
 /*  the Free Software Foundation; either version 2 of the License, or       */

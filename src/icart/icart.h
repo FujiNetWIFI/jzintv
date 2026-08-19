@@ -161,6 +161,26 @@ int icart_register
     uint32_t      const cache_flags
 );
 
+/* ======================================================================== */
+/*  ICART_UNREGISTER -- Undoes icart_register()'s address decode bindings,  */
+/*                      every attribute flavor of them.                     */
+/*                                                                          */
+/*                      Only needed when the same icart_t gets re-          */
+/*                      registered over a different memory map, i.e. the    */
+/*                      FujiNet hot-swap in fujinet_apply_rom().  Without   */
+/*                      it the previous cart's ranges keep answering        */
+/*                      alongside the new ones, and since the Intellivision */
+/*                      bus is wire-AND, the CPU sees the AND of the two --  */
+/*                      the FujiNet config ROM's 8-bit RAM window at        */
+/*                      $8000-$9BFF quietly truncating a pushed game's      */
+/*                      16-bit ROM in the same range.                       */
+/* ======================================================================== */
+void icart_unregister
+(
+    icart_t      *const ic,
+    periph_bus_t *const bus
+);
+
 #endif
 /* ======================================================================== */
 /*  This program is free software; you can redistribute it and/or modify    */

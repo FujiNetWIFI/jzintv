@@ -109,9 +109,19 @@ typedef struct fujinet_t
     size_t    rom_len;
     size_t    rom_cap;
 
-    uint8_t   cfg_buf[2048]; /* .cfg sibling text; mirrors inty_cart.c's   */
+    uint8_t   cfg_buf[4096]; /* .cfg sibling text; mirrors inty_cart.c's   */
     size_t    cfg_len;       /* fixed CFG_BUF_MAX -- a .cfg is well under  */
     int       have_cfg;      /* 1KB in practice.                          */
+    int       cfg_truncated; /* cfg overflowed cfg_buf -- fail TRUNCATED   */
+
+    /*  Session flag mirroring the RP2040's cart.MailboxActive: cleared    */
+    /*  when a booted game's map covers the mailbox window (such a game    */
+    /*  can't be fuji-aware). While clear, reads return ~0 (AND-identity   */
+    /*  on jzIntv's shared bus) and writes are dropped, so the game's own  */
+    /*  ROM at $9C00-$9FFF reads through cleanly. Restored only by a       */
+    /*  session restart (fujinet_init), matching the power-cycle watchdog  */
+    /*  on real hardware.                                                 */
+    int       mailbox_active;
 } fujinet_t;
 
 /* ======================================================================== */

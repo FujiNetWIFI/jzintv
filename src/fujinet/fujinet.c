@@ -105,6 +105,11 @@ LOCAL uint32_t fujinet_read(periph_t *const per, periph_t *req,
     UNUSED(req);
     UNUSED(data);
 
+    /* Mailbox disabled for this session: ~0 is the AND-identity on
+     * jzIntv's shared bus, so the game's own ROM here reads through. */
+    if (!fn->mailbox_active)
+        return ~0U;
+
     return fn->ram[addr & (FUJINET_WINDOW_SIZE - 1)];
 }
 
@@ -121,6 +126,9 @@ LOCAL void fujinet_write(periph_t *const per, periph_t *req,
 {
     fujinet_t *const fn = PERIPH_AS(fujinet_t, per);
     UNUSED(req);
+
+    if (!fn->mailbox_active)
+        return;
 
     fn->ram[addr & (FUJINET_WINDOW_SIZE - 1)] = (uint8_t)(data & 0xFF);
 }
@@ -329,8 +337,9 @@ LOCAL void fujinet_dbc_stream_open(fujinet_t *const fn, int stream)
     }
     else
     {
-        fn->cfg_len   = 0;
-        fn->have_cfg  = 0;
+        fn->cfg_len       = 0;
+        fn->have_cfg      = 0;
+        fn->cfg_truncated = 0;
     }
 
     if (!fn->bootdump_prefix)
@@ -382,6 +391,8 @@ LOCAL void fujinet_dbc_stream_write(fujinet_t *const fn,
     {
         size_t room = sizeof(fn->cfg_buf) - fn->cfg_len;
         size_t n = len < room ? len : room;
+        if (len > room)
+            fn->cfg_truncated = 1; /* cfg didn't fit -- fail TRUNCATED later */
         memcpy(fn->cfg_buf + fn->cfg_len, data, n);
         fn->cfg_len += n;
     }
@@ -400,63 +411,99 @@ LOCAL void fujinet_dbc_stream_close(fujinet_t *const fn)
 }
 
 /* ======================================================================== */
-/*  FUJINET_MAILBOX_OVERLAP -- Refuse a segment that would cover any part   */
-/*                       of the $9C00-$9F3F mailbox window, mirroring       */
-/*                       fujinet.c's mailbox_overlap() (jlp_pending=false   */
-/*                       case) -- a pushed game must not be able to break  */
-/*                       the very channel that pushed it. This peripheral  */
-/*                       doesn't model the Minty JLP RAM window at all, so */
-/*                       unlike the real firmware there is no jlp_pending  */
-/*                       widening here -- always just the mailbox itself.  */
+/*  FUJINET_MAILBOX_OVERLAP -- [addr, addr+len-1] vs the $9C00-$9F3F        */
+/*                       mailbox window, mirroring fujinet.c's              */
+/*                       mailbox_overlap() (jlp_pending=false case; this    */
+/*                       peripheral doesn't model the Minty JLP window).    */
+/*                       An overlap no longer rejects the boot -- the game  */
+/*                       boots with the mailbox disabled for the session,   */
+/*                       same as the RP2040 firmware.                       */
 /* ======================================================================== */
 LOCAL int fujinet_mailbox_overlap(uint32_t addr, uint32_t len)
 {
-    uint32_t to = addr + len;
+    uint32_t to = addr + len - 1;
     return !(to < FUJI_MB_ADDR_LO || addr > FUJI_MB_ADDR_HI);
 }
 
 /* ======================================================================== */
-/*  FUJINET_PARSE_CFG_MAPPING -- Port of inty_cart.c's parse_cfg_mapping(): */
-/*                       only understands bare "$from - $to = $rom" lines  */
-/*                       (one per line), the same restriction the real     */
-/*                       hardware's network-cfg parser has. Segments are   */
-/*                       validated against the mailbox window as a whole   */
-/*                       before any are committed -- one bad line rejects  */
-/*                       the entire mapping, same as apply_boot_mapping(). */
-/*                       Returns the number of segments added (0 = no      */
-/*                       usable mapping; caller should fall back).         */
+/*  FUJINET_PARSE_CFG_MAPPING -- Port of the pico's parse_pushed_cfg() +    */
+/*                       the cfg half of apply_boot_mapping().              */
 /* ======================================================================== */
+/* Return: >0 = segments committed to `rom`; 0 = no [mapping] lines at all
+ * (caller falls back to the size table); -1 = the cfg WAS the mapping
+ * source but is unusable -- FUJI_MB_BOOT_ERR already set, don't fall back.
+ * *disable_mb is set when the mapping covers the mailbox window: the boot
+ * proceeds with the mailbox disabled for the session (the RP2040 does the
+ * same). Mirrors the pico's parse_pushed_cfg() + apply_boot_mapping():
+ * [mapping]/[memattr] sections, clamp-at-EOF (bin2rom semantics -- known
+ * cfg collections describe each title's largest layout), nothing below
+ * $4000, cfg RAM total capped at the hardware's 0x2800-word budget so a
+ * cart that can't run on real hardware fails identically here. */
 LOCAL int fujinet_parse_cfg_mapping_into(icartrom_t *const rom, fujinet_t *const fn,
                                           const uint16_t *const words,
-                                          uint32_t word_count)
+                                          uint32_t word_count, int *disable_mb)
 {
-    enum { MAX_CFG_SEGS = 8 };
+    enum { MAX_CFG_SEGS = 16, MAX_CFG_RAM = 8 };
     uint32_t seg_from[MAX_CFG_SEGS], seg_to[MAX_CFG_SEGS], seg_rom[MAX_CFG_SEGS];
-    int nseg = 0;
+    uint32_t ram_from[MAX_CFG_RAM], ram_to[MAX_CFG_RAM];
+    uint8_t  ram_width[MAX_CFG_RAM];
+    int nseg = 0, nram = 0, truncated = fn->cfg_truncated;
+    uint32_t total_ram = 0;
+    enum { SEC_NONE, SEC_MAPPING, SEC_MEMATTR } section = SEC_NONE;
 
     const char *p   = (const char *)fn->cfg_buf;
     const char *end = (const char *)fn->cfg_buf + fn->cfg_len;
 
-    while (p < end && nseg < MAX_CFG_SEGS)
+    while (p < end)
     {
         const char *nl = memchr(p, '\n', (size_t)(end - p));
         const char *line_end = nl ? nl : end;
         size_t linelen = (size_t)(line_end - p);
 
-        if (linelen > 0 && p[0] == '$')
+        char tmp[96];
+        size_t copylen = linelen < sizeof(tmp) - 1 ? linelen : sizeof(tmp) - 1;
+        memcpy(tmp, p, copylen);
+        tmp[copylen] = 0;
+
+        if (strstr(tmp, "[mapping]"))
+            section = SEC_MAPPING;
+        else if (strstr(tmp, "[memattr]"))
+            section = SEC_MEMATTR;
+        else if (linelen > 0 && tmp[0] == '[')
+            section = SEC_NONE;
+        else if (section == SEC_MAPPING && linelen > 0 && tmp[0] == '$')
         {
-            unsigned int from = 0, to = 0, rom = 0;
-            char tmp[80];
-            size_t copylen = linelen < sizeof(tmp) - 1 ? linelen : sizeof(tmp) - 1;
-            memcpy(tmp, p, copylen);
-            tmp[copylen] = 0;
-            if (sscanf(tmp, " $%x - $%x = $%x", &from, &to, &rom) == 3 &&
-                to >= from && to < word_count)
+            unsigned int from = 0, to = 0, dst = 0;
+            if (sscanf(tmp, " $%x - $%x = $%x", &from, &to, &dst) == 3 &&
+                to >= from)
             {
-                seg_from[nseg] = from;
-                seg_to[nseg]   = to;
-                seg_rom[nseg]  = rom;
-                nseg++;
+                if (nseg < MAX_CFG_SEGS)
+                {
+                    seg_from[nseg] = from;
+                    seg_to[nseg]   = to;
+                    seg_rom[nseg]  = dst;
+                    nseg++;
+                }
+                else
+                    truncated = 1;
+            }
+        }
+        else if (section == SEC_MEMATTR && linelen > 0 && tmp[0] == '$')
+        {
+            unsigned int from = 0, to = 0, width = 0;
+            char type[4];
+            if (sscanf(tmp, " $%x - $%x = %3s %u", &from, &to, type, &width) == 4 &&
+                (width == 8 || width == 16) && to >= from)
+            {
+                if (nram < MAX_CFG_RAM)
+                {
+                    ram_from[nram]  = from;
+                    ram_to[nram]    = to;
+                    ram_width[nram] = (uint8_t)width;
+                    nram++;
+                }
+                else
+                    truncated = 1;
             }
         }
 
@@ -466,19 +513,74 @@ LOCAL int fujinet_parse_cfg_mapping_into(icartrom_t *const rom, fujinet_t *const
     if (nseg == 0)
         return 0;
 
-    for (int i = 0; i < nseg; i++)
+    if (truncated)
     {
-        uint32_t len = seg_to[i] - seg_from[i] + 1;
-        if (fujinet_mailbox_overlap(seg_rom[i], len))
-            return 0;   /* whole mapping rejected, same as real hardware */
+        fn->ram[OFS(FUJI_MB_BOOT_ERR)] = FUJI_BOOT_ERR_TRUNCATED;
+        return -1;
+    }
+
+    /* Clamp-at-EOF: drop segments wholly past the file, trim ones that
+     * straddle it. */
+    {
+        int kept = 0;
+        for (int i = 0; i < nseg; i++)
+        {
+            if (seg_from[i] >= word_count)
+                continue;
+            if (seg_to[i] >= word_count)
+                seg_to[i] = word_count - 1;
+            seg_from[kept] = seg_from[i];
+            seg_to[kept]   = seg_to[i];
+            seg_rom[kept]  = seg_rom[i];
+            kept++;
+        }
+        nseg = kept;
+    }
+    if (nseg == 0)
+    {
+        fn->ram[OFS(FUJI_MB_BOOT_ERR)] = FUJI_BOOT_ERR_CFGBAD;
+        return -1;
+    }
+
+    /* RAM sanitation: nothing over console space, total within the
+     * hardware budget. */
+    {
+        int kept = 0;
+        for (int i = 0; i < nram; i++)
+        {
+            if (ram_to[i] < 0x4000)
+                continue;
+            if (ram_from[i] < 0x4000)
+                ram_from[i] = 0x4000;
+            total_ram += ram_to[i] - ram_from[i] + 1;
+            ram_from[kept]  = ram_from[i];
+            ram_to[kept]    = ram_to[i];
+            ram_width[kept] = ram_width[i];
+            kept++;
+        }
+        nram = kept;
+    }
+    if (total_ram > 0x2800)
+    {
+        fn->ram[OFS(FUJI_MB_BOOT_ERR)] = FUJI_BOOT_ERR_RAM;
+        return -1;
     }
 
     for (int i = 0; i < nseg; i++)
-    {
-        uint32_t len = seg_to[i] - seg_from[i] + 1;
-        icartrom_addseg(rom, (uint16_t *)(words + seg_from[i]),
-                        seg_rom[i], len, ICARTROM_READ, 0);
-    }
+        if (fujinet_mailbox_overlap(seg_rom[i], seg_to[i] - seg_from[i] + 1))
+            *disable_mb = 1;
+    for (int i = 0; i < nram; i++)
+        if (fujinet_mailbox_overlap(ram_from[i], ram_to[i] - ram_from[i] + 1))
+            *disable_mb = 1;
+
+    for (int i = 0; i < nseg; i++)
+        icartrom_addseg(rom, (uint16_t *)(words + seg_from[i]), seg_rom[i],
+                        seg_to[i] - seg_from[i] + 1, ICARTROM_READ, 0);
+    for (int i = 0; i < nram; i++)
+        icartrom_addseg(rom, NULL, ram_from[i], ram_to[i] - ram_from[i] + 1,
+                        (uint8_t)(ICARTROM_READ | ICARTROM_WRITE |
+                                  (ram_width[i] == 8 ? ICARTROM_NARROW : 0)),
+                        0);
 
     return nseg;
 }
@@ -523,6 +625,7 @@ LOCAL int fujinet_apply_rom(fujinet_t *const fn)
         return 0;
 
     int committed = 0;
+    int disable_mb = 0;
 
     /* Try the Intellicart/CC3 self-describing header first -- same format
      * inty_cart.c's ROMFMT_HDR path decodes, and jzIntv already has a full
@@ -532,6 +635,12 @@ LOCAL int fujinet_apply_rom(fujinet_t *const fn)
         icartrom_decode(scratch, fn->rom_buf, (int)fn->rom_len, 0, 0) >= 0)
     {
         committed = 1;
+        /* Scan the decoded 256-word-page attribute bitmaps for anything
+         * live over the mailbox window (pages $9C-$9F). */
+        for (uint32_t pg = FUJI_MB_ADDR_LO >> 8; pg <= FUJI_MB_ADDR_HI >> 8; pg++)
+            if (((scratch->readable[pg >> 5] | scratch->writable[pg >> 5]) >>
+                 (pg & 31)) & 1)
+                disable_mb = 1;
     } else
     {
         icartrom_init(scratch); /* A failed decode may have partially
@@ -548,11 +657,14 @@ LOCAL int fujinet_apply_rom(fujinet_t *const fn)
                 words[i] = ((uint16_t)fn->rom_buf[2*i] << 8) |
                             fn->rom_buf[2*i + 1];
 
-            if (fn->have_cfg &&
-                fujinet_parse_cfg_mapping_into(scratch, fn, words, word_count) > 0)
+            int cfg_rc = fn->have_cfg
+                       ? fujinet_parse_cfg_mapping_into(scratch, fn, words,
+                                                        word_count, &disable_mb)
+                       : 0;
+            if (cfg_rc > 0)
             {
                 committed = 1;
-            } else
+            } else if (cfg_rc == 0)
             {
                 /* Size-guess table, same as inty_cart.c's
                  * apply_boot_mapping() default branch. */
@@ -574,6 +686,17 @@ LOCAL int fujinet_apply_rom(fujinet_t *const fn)
                     from[1]=0x2000; to[1]=0x2FFF; rom_addr[1]=0xD000;
                     from[2]=0x3000; to[2]=0x3FFF; rom_addr[2]=0xF000;
                     break;
+                case 40960: /* 20K words: 8K at $5000, 12K contiguous at $D000 */
+                    nseg=2;
+                    from[0]=0;      to[0]=0x1FFF; rom_addr[0]=0x5000;
+                    from[1]=0x2000; to[1]=0x4FFF; rom_addr[1]=0xD000;
+                    break;
+                case 49152: /* 24K words: the common INTV shape, 8K/12K/4K */
+                    nseg=3;
+                    from[0]=0;      to[0]=0x1FFF; rom_addr[0]=0x5000;
+                    from[1]=0x2000; to[1]=0x4FFF; rom_addr[1]=0x9000;
+                    from[2]=0x5000; to[2]=0x5FFF; rom_addr[2]=0xD000;
+                    break;
                 default:
                     nseg = 0;
                     break;
@@ -583,17 +706,16 @@ LOCAL int fujinet_apply_rom(fujinet_t *const fn)
                 {
                     committed = 1;
                     for (uint32_t i = 0; i < nseg; i++)
+                    {
                         if (fujinet_mailbox_overlap(rom_addr[i], to[i] - from[i] + 1))
-                        {
-                            committed = 0;
-                            break;
-                        }
-                    if (committed)
-                        for (uint32_t i = 0; i < nseg; i++)
-                            icartrom_addseg(scratch, words + from[i], rom_addr[i],
-                                            to[i] - from[i] + 1, ICARTROM_READ, 0);
+                            disable_mb = 1;
+                        icartrom_addseg(scratch, words + from[i], rom_addr[i],
+                                        to[i] - from[i] + 1, ICARTROM_READ, 0);
+                    }
                 }
             }
+            /* cfg_rc < 0: the cfg was the mapping source but unusable --
+             * BOOT_ERR is already set, don't guess. */
         }
 
         free(words);
@@ -606,6 +728,13 @@ LOCAL int fujinet_apply_rom(fujinet_t *const fn)
             free(rom->metadata);
         *rom = *scratch;
         memset(ic->bs_tbl, 0, sizeof(ic->bs_tbl));
+        if (disable_mb)
+        {
+            fn->mailbox_active = 0;
+            if (fn->debug)
+                jzp_printf("FUJINET: mapping covers the mailbox window -- "
+                           "mailbox disabled for this session\n");
+        }
     } else if (scratch->metadata)
     {
         free(scratch->metadata);
@@ -632,6 +761,12 @@ LOCAL int fujinet_apply_rom(fujinet_t *const fn)
 /* ======================================================================== */
 LOCAL void fujinet_handle_dbc_frame(fujinet_t *const fn, const fb_reply_t *req)
 {
+    /* Abort-CLOSE (payload 0x01): the bridge detected a short/failed
+     * transfer -- discard the stream without treating the partial data as
+     * boot-ready. Bare CLOSE = commit, so old peers stay compatible. */
+    int aborted = (req->command == NETCMD_CLOSE &&
+                   req->data_len > 0 && req->data[0] == 0x01);
+
     if (req->command == NETCMD_OPEN)
     {
         int stream = (req->data_len > 0) ? req->data[0] : 0;
@@ -639,7 +774,10 @@ LOCAL void fujinet_handle_dbc_frame(fujinet_t *const fn, const fb_reply_t *req)
         fn->ram[OFS(FUJI_MB_BOOT_STATE)] = (stream == 1) ? FUJI_BOOT_OPENING
                                                           : FUJI_BOOT_XFER;
         if (stream == 0)
+        {
             fn->ram[OFS(FUJI_MB_BOOT_PCT)] = 0;
+            fn->ram[OFS(FUJI_MB_BOOT_ERR)] = 0;
+        }
     }
     else if (req->command == NETCMD_WRITE)
     {
@@ -660,12 +798,37 @@ LOCAL void fujinet_handle_dbc_frame(fujinet_t *const fn, const fb_reply_t *req)
     {
         int was_rom = (fn->bootdump_stream == 0);
         fujinet_dbc_stream_close(fn);
-        if (was_rom)
+        if (aborted && !was_rom)
+        {
+            fn->have_cfg = 0;
+            fn->cfg_len  = 0;
+        }
+        else if (was_rom && aborted)
+        {
+            fn->ram[OFS(FUJI_MB_BOOT_STATE)] = FUJI_BOOT_FAILED;
+            fn->ram[OFS(FUJI_MB_BOOT_ERR)]   = FUJI_BOOT_ERR_TRUNCATED;
+            fn->have_cfg = 0;
+            fn->cfg_len  = 0;
+        }
+        else if (was_rom)
         {
             fn->ram[OFS(FUJI_MB_BOOT_STATE)] = FUJI_BOOT_MAPPING;
-            if (fujinet_apply_rom(fn))
+            int boot_ok = fujinet_apply_rom(fn);
+            /* consume the cfg so the next push starts clean */
+            fn->have_cfg = 0;
+            fn->cfg_len  = 0;
+            if (boot_ok)
             {
                 fn->ram[OFS(FUJI_MB_BOOT_PCT)] = 100;
+                /* Drop the outgoing cart's address decode bindings first.
+                 * periph_register() only ever adds, so without this the
+                 * config ROM's own map keeps answering next to the new
+                 * game's -- and on the Intellivision's wire-AND bus the CPU
+                 * gets the AND of the two. The config ROM declares 8-bit
+                 * RAM over $8000-$9BFF, so every pushed game with a segment
+                 * there (the 12K-at-$9000 shape most 32K/48K carts use)
+                 * came back with its high byte silently masked off. */
+                icart_unregister((icart_t *)fn->icart, fn->bus);
                 icart_register((icart_t *)fn->icart, fn->bus,
                                (cp1600_t *)fn->cpu, fn->cache_flags);
                 /* icart_register() just repointed the ROM address decoder
@@ -924,8 +1087,9 @@ int fujinet_init(fujinet_t *const fujinet, const char *const host,
     fujinet->cache_flags = cache_flags;
 
     fn_sock_init(&fujinet->sock);
-    fujinet->state        = FUJINET_ST_DISCONNECTED;
-    fujinet->reconnect_at = 0;   /*  Try to connect immediately.            */
+    fujinet->state          = FUJINET_ST_DISCONNECTED;
+    fujinet->reconnect_at   = 0; /*  Try to connect immediately.            */
+    fujinet->mailbox_active = 1; /*  Session flag; see fujinet.h.           */
 
     fujinet_paint_ident(fujinet);
 
