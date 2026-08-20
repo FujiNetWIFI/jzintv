@@ -99,6 +99,13 @@ typedef struct fujinet_t
     int             bootdump_stream;               /* -1, or 0=rom/1=cfg. */
     uint32_t        bootdump_rom_bytes;            /* For the progress bar.*/
 
+    /*  Total byte count of the ROM stream, from the NETCMD_OPEN header --  */
+    /*  the denominator FUJI_MB_BOOT_PCT needs to mean anything.  0 means   */
+    /*  "not told": an OPEN whose payload is just the stream id, i.e. a     */
+    /*  fujinet-firmware predating the 5-byte header, in which case the     */
+    /*  progress bar falls back to the old fixed-32KB guess.                */
+    uint32_t        rom_expected;
+
     /*  Writable scratch directory (--fujinet-bootdir).  A pushed .bin +   */
     /*  .cfg pair is staged here so jzIntv's own BIN+CFG loader can read   */
     /*  it -- see fujinet_apply_rom().  Also holds jlpsave/ for pushed     */

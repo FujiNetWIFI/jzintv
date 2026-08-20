@@ -355,7 +355,8 @@ LOCAL void fujinet_dbc_send_ack(fujinet_t *const fn)
 /*  FUJINET_DBC_STREAM_OPEN/WRITE/CLOSE -- --fujinet-bootdump=PREFIX file   */
 /*                       plumbing. See fujinet.h's bootdump_* fields.       */
 /* ======================================================================== */
-LOCAL void fujinet_dbc_stream_open(fujinet_t *const fn, int stream)
+LOCAL void fujinet_dbc_stream_open(fujinet_t *const fn, int stream,
+                                    uint32_t expected)
 {
     fn->bootdump_stream = stream;
     if (stream == 0)
@@ -363,6 +364,22 @@ LOCAL void fujinet_dbc_stream_open(fujinet_t *const fn, int stream)
         fn->bootdump_rom_bytes = 0;
         fn->rom_len = 0;
         fn->rom_truncated = 0;
+        fn->rom_expected = expected;
+
+        /*  The sender told us the exact size, so take the whole buffer in   */
+        /*  one go rather than letting fujinet_rom_buf_append() double its   */
+        /*  way there (six reallocs of a growing 232KB image for             */
+        /*  Pacmanthology).  Purely an optimization: a failure here leaves   */
+        /*  rom_cap alone and the append path grows as it always did.        */
+        if (expected && expected > fn->rom_cap)
+        {
+            uint8_t *grown = (uint8_t *)realloc(fn->rom_buf, expected);
+            if (grown)
+            {
+                fn->rom_buf = grown;
+                fn->rom_cap = expected;
+            }
+        }
     }
     else
     {
@@ -385,9 +402,10 @@ LOCAL void fujinet_dbc_stream_open(fujinet_t *const fn, int stream)
     }
 }
 
-/* Growable append into fn->rom_buf, doubling capacity as needed -- a real
- * game tops out well under 128KB, so this converges in a handful of
- * reallocs. */
+/* Growable append into fn->rom_buf, doubling capacity as needed. Normally
+ * this never has to grow at all: fujinet_dbc_stream_open() reserves the
+ * exact size the OPEN header carried. It still matters against a sender
+ * that doesn't send one, and as the backstop if that reservation failed. */
 LOCAL void fujinet_rom_buf_append(fujinet_t *const fn,
                                    const uint8_t *data, uint16_t len)
 {
@@ -1050,13 +1068,32 @@ LOCAL void fujinet_handle_dbc_frame(fujinet_t *const fn, const fb_reply_t *req)
     if (req->command == NETCMD_OPEN)
     {
         int stream = (req->data_len > 0) ? req->data[0] : 0;
-        fujinet_dbc_stream_open(fn, stream);
+
+        /* OPEN payload is the stream id followed by that stream's total
+         * size, four little-endian bytes -- see push_stream()'s open_hdr in
+         * fujinet-firmware's lib/media/rs232/diskTypeROM.cpp, and the
+         * identical decode in the RP2040's own dbc_inbound_handler(). The
+         * length guard is the compatibility hinge in the other direction:
+         * a sender predating the header sends the stream id alone, and we
+         * fall back to the fixed-size guess below, exactly as before. */
+        uint32_t total = 0;
+        if (req->data_len >= 5)
+            total = (uint32_t)req->data[1]        |
+                    ((uint32_t)req->data[2] << 8)  |
+                    ((uint32_t)req->data[3] << 16) |
+                    ((uint32_t)req->data[4] << 24);
+
+        fujinet_dbc_stream_open(fn, stream, total);
         fn->ram[OFS(FUJI_MB_BOOT_STATE)] = (stream == 1) ? FUJI_BOOT_OPENING
                                                           : FUJI_BOOT_XFER;
         if (stream == 0)
         {
             fn->ram[OFS(FUJI_MB_BOOT_PCT)] = 0;
             fn->ram[OFS(FUJI_MB_BOOT_ERR)] = 0;
+            if (fn->debug)
+                jzp_printf("FUJINET: ROM push, %u bytes%s\n",
+                           (unsigned)total,
+                           total ? "" : " (size not sent; progress estimated)");
         }
     }
     else if (req->command == NETCMD_WRITE)
@@ -1064,14 +1101,27 @@ LOCAL void fujinet_handle_dbc_frame(fujinet_t *const fn, const fb_reply_t *req)
         fujinet_dbc_stream_write(fn, req->data, req->data_len);
         if (fn->bootdump_stream == 0)
         {
-            /* Total size isn't known in advance, so this saturates near
-             * 100% rather than reaching it exactly until CLOSE -- same
-             * approximation the RP2040 side uses, good enough to see the
-             * bar move. */
+            /* Mirrors bootmap_pct() in the RP2040 firmware's bootmap.c,
+             * including its fallback denominator: without a size from the
+             * sender there is nothing to divide by, and a fixed 32KB at
+             * least makes the bar move. The clamp at 99 is deliberate on
+             * both sides -- CLOSE publishes 100, once the cart is actually
+             * mapped, so the bar never claims a boot that hasn't happened. */
+            uint32_t total = fn->rom_expected ? fn->rom_expected : 32768;
             uint32_t pct;
+            uint8_t  was = fn->ram[OFS(FUJI_MB_BOOT_PCT)];
             fn->bootdump_rom_bytes += req->data_len;
-            pct = (fn->bootdump_rom_bytes * 100) / 32768;
+            pct = (fn->bootdump_rom_bytes * 100) / total;
             fn->ram[OFS(FUJI_MB_BOOT_PCT)] = (uint8_t)(pct > 99 ? 99 : pct);
+
+            /*  Only on a change, so this is ~100 lines across a whole push  */
+            /*  rather than one per 512-byte frame -- enough to see the bar  */
+            /*  advance (or notice it wedged) without burying the trace.     */
+            if (fn->debug && fn->ram[OFS(FUJI_MB_BOOT_PCT)] != was)
+                jzp_printf("FUJINET: boot %u%% (%u/%u bytes)\n",
+                           (unsigned)fn->ram[OFS(FUJI_MB_BOOT_PCT)],
+                           (unsigned)fn->bootdump_rom_bytes,
+                           (unsigned)total);
         }
     }
     else if (req->command == NETCMD_CLOSE)

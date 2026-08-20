@@ -2,6 +2,41 @@ Release notes for the FujiNet fork.
 Based on upstream jzIntv 20200712 (SVN r2110).  See ReleaseNotes_20200712.txt
 and earlier ReleaseNotes_*.txt files for the upstream emulator's history.
 
+-------------------------------------
+ Boot progress bar tracks the push:
+-------------------------------------
+
+The "BOOTING / DO NOT POWER OFF" bar was fiction.  It divided the bytes
+received so far by a fixed 32768, so a 13KB cart crawled to 41% and then
+jumped straight to 100% at CLOSE, while a 232KB cart reached 99% after its
+first 32KB and sat there for the remaining 200KB.
+
+The receiver had no better option at the time: NETCMD_OPEN's payload was a
+single byte, the stream id, so the total size never crossed the wire even
+though push_stream() has always known it.  fujinet-firmware has since
+widened that payload to five bytes -- the stream id followed by the
+stream's total size, little-endian -- and its own RP2040 receiver consumes
+it (bootmap_pct() in pico/intellivision/firmware/src/bootmap.c).  jzIntv
+simply never learned to read it.
+
+*   src/fujinet/fujinet.c, fujinet.h: parse the OPEN header and divide by
+    the size it carries, mirroring bootmap_pct() including its fallback.
+    The parse is guarded on data_len >= 5, so a fujinet-firmware predating
+    the header still works and still gets the old fixed-32KB estimate --
+    now announced as an estimate under --fujinet-debug rather than passed
+    off as a measurement.  The clamp at 99 during transfer is deliberate
+    and matches the RP2040: CLOSE publishes 100, after the cart is actually
+    mapped, so the bar never claims a boot that hasn't happened.
+*   src/fujinet/fujinet.c: knowing the size, the ROM buffer is now reserved
+    once at OPEN instead of doubling its way up -- six reallocs of a
+    growing 232KB image for Pacmanthology.  Purely an optimization; a
+    failed reservation falls through to the old growth path.
+*   src/fujinet/fujinet.c: --fujinet-debug traces the published percentage,
+    but only when it changes, so a whole push is ~100 lines rather than one
+    per 512-byte frame.  A stuck bar is the visible symptom of several
+    different faults (see the wedged-transfer notes below), and this is
+    what tells them apart.
+
 ------------------------------------------------------
  ECS-paged and JLP cartridges pushed over FujiNet:
 ------------------------------------------------------
