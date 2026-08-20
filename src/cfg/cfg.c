@@ -368,7 +368,8 @@ enum
     FLAG_START_DELAY,   FLAG_DBG_SCRIPT,   FLAG_DBG_SRCMAP,   FLAG_FILE_IO,
     FLAG_ENABLE_MOUSE,  FLAG_PRESCALE,     FLAG_JLP_SAVEGAME, FLAG_AVI_RATE,
     FLAG_LOCUTUS,       FLAG_ECS_TAPE,     FLAG_ECS_PRINTER,  FLAG_CHEAT,
-    FLAG_FUJINET,       FLAG_FUJINET_DEBUG,FLAG_FUJINET_BOOTDUMP
+    FLAG_FUJINET,       FLAG_FUJINET_DEBUG,FLAG_FUJINET_BOOTDUMP,
+    FLAG_FUJINET_BOOTDIR
 };
 
 struct option cfg_longopt[] =
@@ -495,6 +496,7 @@ struct option cfg_longopt[] =
     {   "fujinet",      2,      NULL,       FLAG_FUJINET        },
     {   "fujinet-debug",0,      NULL,       FLAG_FUJINET_DEBUG  },
     {   "fujinet-bootdump", 1,  NULL,       FLAG_FUJINET_BOOTDUMP },
+    {   "fujinet-bootdir",  1,  NULL,       FLAG_FUJINET_BOOTDIR  },
 
     {   NULL,           0,      NULL,       0                   }
 };
@@ -547,6 +549,7 @@ void cfg_init(cfg_t *cfg, int argc, char * argv_orig[])
     int fujinet_use_config_rom = 0;
     char *fujinet_target = NULL;
     char *fujinet_bootdump = NULL;
+    char *fujinet_bootdir  = NULL;
 #ifndef NO_SERIALIZER
     ser_hier_t *ser_cfg;
 #endif
@@ -869,6 +872,10 @@ void cfg_init(cfg_t *cfg, int argc, char * argv_orig[])
 
             case FLAG_FUJINET_BOOTDUMP:
                 STR_REPLACE(fujinet_bootdump, optarg);
+                break;
+
+            case FLAG_FUJINET_BOOTDIR:
+                STR_REPLACE(fujinet_bootdir, optarg);
                 break;
 
             case 'c':
@@ -1552,7 +1559,8 @@ skip_ecs:;
         }
 
         if (fujinet_init(&cfg->fujinet, fn_host, fn_port, fujinet_debug,
-                         fujinet_bootdump, &cfg->icart, &cfg->cp1600,
+                         fujinet_bootdump, fujinet_bootdir,
+                         &cfg->icart, &cfg->cp1600,
                          cfg->intv, cache_flags))
         {
             fprintf(stderr, "ERROR:  Failed to initialize FujiNet "
@@ -1564,6 +1572,7 @@ skip_ecs:;
     }
     CONDFREE(fujinet_target);
     CONDFREE(fujinet_bootdump);
+    CONDFREE(fujinet_bootdir);
 
     if (gfx_init(&cfg->gfx, rx, ry, rd, cfg->gfx_flags, gfx_verbose,
                   cfg->prescale, bx, by, cfg->pal_mode, &cfg->avi,

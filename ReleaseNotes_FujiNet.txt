@@ -2,6 +2,83 @@ Release notes for the FujiNet fork.
 Based on upstream jzIntv 20200712 (SVN r2110).  See ReleaseNotes_20200712.txt
 and earlier ReleaseNotes_*.txt files for the upstream emulator's history.
 
+------------------------------------------------------
+ ECS-paged and JLP cartridges pushed over FujiNet:
+------------------------------------------------------
+
+Cloudfire, frantic 4 and Pacmanthology all failed a push with "TRUNCATED
+XFER" on the boot screen.  They have three things in common, and all three
+had to be dealt with:
+
+*   Their .cfg files have more than 16 [mapping] lines (24, 17 and 30).
+    The boot receiver's parser was a port of the RP2040's
+    parse_pushed_cfg(), including its BOOT_MAX_SEGS = 16 -- every line past
+    the sixteenth set the truncated flag, which fails the boot with
+    FUJI_BOOT_ERR_TRUNCATED.  That was the reported error.
+*   Most of those lines are ECS-paged ("$0000 - $0FFF = $A000 PAGE 1"), 13
+    of Cloudfire's and 27 of Pacmanthology's.  The parser matched the
+    address triple with sscanf and silently discarded the PAGE suffix, so
+    simply raising the cap would have mapped every bank of a title to the
+    same address with the last one winning -- a cart that boots and then
+    dies the first time it switches banks, which is worse than an error.
+*   All three are JLP titles, and the receiver never looked at [vars] at
+    all.  Pacmanthology additionally keeps ROM at $8000/$8046/$9000, i.e.
+    underneath the JLP window, reached through JLP's $8033/$8034 flip.
+
+None of that is expressible in the icartrom_t the receiver was building:
+it has one flat 64K image[] and no paged storage, and icart.c's own loader
+warns that a JLP title with readable Intellicart segments in $80-$9F cannot
+work.  So the hand-rolled parser is gone, and a pushed .bin + .cfg pair now
+goes through jzIntv's own legacy BIN+CFG loader instead -- the same code
+path "jzintv game.bin" has always taken, which also means a pushed cart and
+a locally loaded one now produce an identical memory map.
+
+*   src/fujinet/fujinet.c: fujinet_parse_cfg_mapping_into() deleted.  New
+    fujinet_apply_bincfg() stages the push under --fujinet-bootdir and
+    drives legacy_read_bincfg() / legacy_register(), which brings ECS
+    paging (mem/mem.c paged ROMs), [vars] jlp/jlp_flash, [memattr] widths,
+    [macro] pokes and clamp-at-EOF span trimming with it.  The .rom header
+    probe still runs first and the bare-.bin size-guess table is unchanged,
+    so those two paths behave exactly as before.
+*   src/fujinet/fujinet.c: a JLP title's push now brings up jlp_init() and
+    registers it at $8000-$9FFF, with the mailbox disabled for the session
+    -- JLP's window contains it outright.  The RP2040 rejects that
+    combination (FUJI_BOOT_ERR_MAILBOX) because it has one RAM window to
+    hand out; jzIntv can just stop answering there.
+*   src/fujinet/fujinet.c: fujinet_start_txn() snapshots the payload of
+    FUJICMD_SET_DEVICE_FULLPATH, which the config ROM always sends
+    immediately before MOUNT_IMAGE.  A network push has no filesystem path
+    of its own, and this is the only name that crosses the mailbox, so it
+    is what a pushed JLP title's save file is keyed on --
+    <bootdir>/jlpsave/<name>.jlp.  Mirrors last_boot_path / config_jlp() on
+    the RP2040.
+*   src/fujinet/fujinet.c: new fujinet_retire_cart() unbinds whichever cart
+    currently owns the bus -- the startup icart_t, or a previous push's
+    legacy_t and each of its paged ROMs -- before the incoming one is
+    registered.
+*   src/bincfg/legacy.c, legacy.h: legacy_read_bincfg() is no longer
+    static, and the periph_t function-pointer setup at the end of
+    legacy_bincfg() is factored out as legacy_init_periph().  No behavior
+    change; legacy_bincfg() calls it exactly where that block used to be.
+*   src/cp1600/cp1600.c, cp1600.h: new cp1600_uncacheable_all().
+    cp1600_cacheable() only ever ORs bits in, which is all a machine built
+    once at startup needs, so the outgoing cart's cacheable pages (and its
+    snoop bindings) survived a hot-swap into a completely different memory
+    map.  cp1600_invalidate() throws away decodes that already happened; it
+    doesn't stop the next one.  Nothing in the stock emulator calls this.
+*   src/cfg/cfg.c, usage.c: new --fujinet-bootdir=DIR, the writable scratch
+    directory the pushed pair is staged in and pushed JLP titles keep their
+    saves under.  Falls back to $TMPDIR then /tmp; the FujiNet Go frontends
+    pass their own data directory, which is the only thing that works on
+    Android.
+
+Two deliberate consequences.  jzIntv will now boot pushed carts that the
+RP2040's own pushed-cfg path still rejects -- its local-storage loader
+(load_cfg()) has handled PAGE and [vars] jlp for a while, but the pushed
+path stages into fixed tables and an MCU has no room to grow them.  And the
+receiver's total_ram > 0x2800 guard (FUJI_BOOT_ERR_RAM), which modelled the
+cartridge's hardware RAM budget, no longer applies on the .cfg path.
+
 -------------------------------------------------
  ROM pushes wedging partway through ("BOOTING"):
 -------------------------------------------------

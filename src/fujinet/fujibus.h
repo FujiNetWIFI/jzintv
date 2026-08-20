@@ -31,6 +31,16 @@
 
 #define FUJICMD_GET_ADAPTERCONFIG_EXTENDED 0xC4
 #define FUJICMD_MOUNT_IMAGE 0xF8
+
+// The config ROM always sends this immediately before MOUNT_IMAGE (see
+// fujicmd.bas's fj_set_device_fullpath wrapper, called from st_boot.bas), so
+// its payload is the only place either cart side can learn a *name* for a
+// network-pushed image -- a push otherwise arrives with no filesystem path
+// of its own. fujinet.c snapshots it for the same reason the RP2040 does:
+// deriving a JLP save-file name. Matches include/fujiCommandID.h in the main
+// tree.
+#define FUJICMD_SET_DEVICE_FULLPATH 0xE2
+
 #define FUJICMD_ACK 0x06
 #define FUJICMD_NAK 0x15
 

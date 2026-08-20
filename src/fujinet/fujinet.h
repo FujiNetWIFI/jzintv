@@ -99,6 +99,19 @@ typedef struct fujinet_t
     int             bootdump_stream;               /* -1, or 0=rom/1=cfg. */
     uint32_t        bootdump_rom_bytes;            /* For the progress bar.*/
 
+    /*  Writable scratch directory (--fujinet-bootdir).  A pushed .bin +   */
+    /*  .cfg pair is staged here so jzIntv's own BIN+CFG loader can read   */
+    /*  it -- see fujinet_apply_rom().  Also holds jlpsave/ for pushed     */
+    /*  JLP titles' save files.  Never NULL after fujinet_init().          */
+    char           *bootstage_dir;
+
+    /*  Payload of the most recent FUJICMD_SET_DEVICE_FULLPATH, captured   */
+    /*  in fujinet_start_txn().  Mirrors last_boot_path in the RP2040's    */
+    /*  fujinet.c, and exists for the same one reason: a network push has  */
+    /*  no filesystem path of its own, and a JLP title needs a stable name */
+    /*  to key its save file on.  Empty string if none seen yet.           */
+    char            last_boot_path[256];
+
     /*  Cart-reload target, set once by fujinet_init() from cfg_init()'s   */
     /*  own icart/cp1600/bus objects -- see fujinet_apply_rom() in         */
     /*  fujinet.c.                                                        */
@@ -108,6 +121,25 @@ typedef struct fujinet_t
                                    /* fujinet.c for the cast back.           */
     periph_bus_t     *bus;
     uint32_t          cache_flags;
+
+    /*  A pushed .bin + .cfg goes through jzIntv's own legacy BIN+CFG      */
+    /*  loader rather than the icart_t above: only legacy_t can express    */
+    /*  ECS-paged carts (mem/mem.c paged ROMs) and the JLP window flip     */
+    /*  that lets a title keep ROM under $8000-$9FFF.  Actually legacy_t*  */
+    /*  and jlp_t*, void* for the same header-decoupling reason as icart.  */
+    /*                                                                     */
+    /*  retired[] holds every legacy_t a previous push registered.         */
+    /*  periph_unregister() deliberately leaves a device on the bus' own   */
+    /*  linked list (it still gets reset/serialized/destructed), so these  */
+    /*  cannot be freed here -- they are handed back at teardown by the    */
+    /*  bus, and until then just have to stay allocated and unbound.       */
+    void             *legacy;       /* Currently-registered cart, or NULL. */
+    void            **retired;      /* legacy_t* from earlier pushes.      */
+    int               n_retired;
+    int               retired_cap;
+
+    void             *jlp;          /* jlp_t*, allocated on first JLP push.*/
+    int               jlp_registered;
 
     uint8_t  *rom_buf;       /* Growable heap buffer for the in-flight ROM.*/
     size_t    rom_len;
@@ -140,6 +172,7 @@ int fujinet_init
     const int          port,        /*  BoIP TCP port.                     */
     const int          debug,       /*  Nonzero to enable frame tracing.   */
     const char *const  bootdump_prefix, /* NULL, or dump DBC pushes here.  */
+    const char *const  bootstage_dir,   /* NULL: pick a system temp dir.   */
     void             *const icart,      /*  Actually icart_t*.             */
     void             *const cpu,        /*  Actually cp1600_t*.            */
     periph_bus_t     *const bus,        /*  Bus, for icart_register()/     */

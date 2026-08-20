@@ -30,10 +30,23 @@
 #include "lzoe/lzoe.h"
 #include "periph/periph.h"
 #include "cp1600/cp1600.h"
+#include "mem/mem.h"
 #include "icart/icart.h"
+#include "metadata/metadata.h"
+#include "file/file.h"
+#include "bincfg/bincfg.h"
+#include "bincfg/legacy.h"
+#include "jlp/jlp.h"
 #include "misc/jzprint.h"
 #include "fujinet/fujibus.h"
 #include "fujinet/fujinet.h"
+
+#if defined(_WIN32) || defined(WIN32)
+#  include <direct.h>
+#else
+#  include <sys/stat.h>
+#  include <sys/types.h>
+#endif
 
 /* Approximate CP-1610 clock rate that periph->now counts in (see
  * PERIPH_HZ() in periph/periph.h -- NTSC main clock / 4).  Used only to
@@ -243,6 +256,21 @@ LOCAL void fujinet_start_txn(fujinet_t *const fn, const periph_t *const per)
     for (i = 0; i < txlen; i++)
         txpayload[i] = fn->ram[OFS(FUJI_MB_TX) + i];
 
+    /*  See fn->last_boot_path: this is the only place a name for a        */
+    /*  network-pushed image ever crosses the mailbox.  Snapshot it        */
+    /*  regardless of whether the transaction below succeeds -- the        */
+    /*  config ROM sent it, which is all we need it for.  Same placement   */
+    /*  as the RP2040's fuji_mailbox_service().                            */
+    if (device == FUJI_DEVICEID_FUJINET && cmd == FUJICMD_SET_DEVICE_FULLPATH)
+    {
+        unsigned n = txlen < sizeof(fn->last_boot_path) - 1
+                   ? txlen : sizeof(fn->last_boot_path) - 1;
+        memcpy(fn->last_boot_path, txpayload, n);
+        fn->last_boot_path[n] = 0;
+        if (fn->debug)
+            jzp_printf("FUJINET: boot path = \"%s\"\n", fn->last_boot_path);
+    }
+
     fn->seq_in_flight = seq;
     fn->ram[OFS(FUJI_MB_STATUS)] = FUJI_MB_STATUS_BUSY;
 
@@ -442,176 +470,369 @@ LOCAL int fujinet_mailbox_overlap(uint32_t addr, uint32_t len)
 }
 
 /* ======================================================================== */
-/*  FUJINET_PARSE_CFG_MAPPING -- Port of the pico's parse_pushed_cfg() +    */
-/*                       the cfg half of apply_boot_mapping().              */
+/*  FUJINET_MKDIR     -- Creates one directory; "already there" is success. */
 /* ======================================================================== */
-/* Return: >0 = segments committed to `rom`; 0 = no [mapping] lines at all
- * (caller falls back to the size table); -1 = the cfg WAS the mapping
- * source but is unusable -- FUJI_MB_BOOT_ERR already set, don't fall back.
- * *disable_mb is set when the mapping covers the mailbox window: the boot
- * proceeds with the mailbox disabled for the session (the RP2040 does the
- * same). Mirrors the pico's parse_pushed_cfg() + apply_boot_mapping():
- * [mapping]/[memattr] sections, clamp-at-EOF (bin2rom semantics -- known
- * cfg collections describe each title's largest layout), nothing below
- * $4000, cfg RAM total capped at the hardware's 0x2800-word budget so a
- * cart that can't run on real hardware fails identically here. */
-LOCAL int fujinet_parse_cfg_mapping_into(icartrom_t *const rom, fujinet_t *const fn,
-                                          const uint16_t *const words,
-                                          uint32_t word_count, int *disable_mb)
+LOCAL void fujinet_mkdir(const char *path)
 {
-    enum { MAX_CFG_SEGS = 16, MAX_CFG_RAM = 8 };
-    uint32_t seg_from[MAX_CFG_SEGS], seg_to[MAX_CFG_SEGS], seg_rom[MAX_CFG_SEGS];
-    uint32_t ram_from[MAX_CFG_RAM], ram_to[MAX_CFG_RAM];
-    uint8_t  ram_width[MAX_CFG_RAM];
-    int nseg = 0, nram = 0, truncated = fn->cfg_truncated;
-    uint32_t total_ram = 0;
-    enum { SEC_NONE, SEC_MAPPING, SEC_MEMATTR } section = SEC_NONE;
-
-    const char *p   = (const char *)fn->cfg_buf;
-    const char *end = (const char *)fn->cfg_buf + fn->cfg_len;
-
-    while (p < end)
-    {
-        const char *nl = memchr(p, '\n', (size_t)(end - p));
-        const char *line_end = nl ? nl : end;
-        size_t linelen = (size_t)(line_end - p);
-
-        char tmp[96];
-        size_t copylen = linelen < sizeof(tmp) - 1 ? linelen : sizeof(tmp) - 1;
-        memcpy(tmp, p, copylen);
-        tmp[copylen] = 0;
-
-        if (strstr(tmp, "[mapping]"))
-            section = SEC_MAPPING;
-        else if (strstr(tmp, "[memattr]"))
-            section = SEC_MEMATTR;
-        else if (linelen > 0 && tmp[0] == '[')
-            section = SEC_NONE;
-        else if (section == SEC_MAPPING && linelen > 0 && tmp[0] == '$')
-        {
-            unsigned int from = 0, to = 0, dst = 0;
-            if (sscanf(tmp, " $%x - $%x = $%x", &from, &to, &dst) == 3 &&
-                to >= from)
-            {
-                if (nseg < MAX_CFG_SEGS)
-                {
-                    seg_from[nseg] = from;
-                    seg_to[nseg]   = to;
-                    seg_rom[nseg]  = dst;
-                    nseg++;
-                }
-                else
-                    truncated = 1;
-            }
-        }
-        else if (section == SEC_MEMATTR && linelen > 0 && tmp[0] == '$')
-        {
-            unsigned int from = 0, to = 0, width = 0;
-            char type[4];
-            if (sscanf(tmp, " $%x - $%x = %3s %u", &from, &to, type, &width) == 4 &&
-                (width == 8 || width == 16) && to >= from)
-            {
-                if (nram < MAX_CFG_RAM)
-                {
-                    ram_from[nram]  = from;
-                    ram_to[nram]    = to;
-                    ram_width[nram] = (uint8_t)width;
-                    nram++;
-                }
-                else
-                    truncated = 1;
-            }
-        }
-
-        p = nl ? nl + 1 : end;
-    }
-
-    if (nseg == 0)
-        return 0;
-
-    if (truncated)
-    {
-        fn->ram[OFS(FUJI_MB_BOOT_ERR)] = FUJI_BOOT_ERR_TRUNCATED;
-        return -1;
-    }
-
-    /* Clamp-at-EOF: drop segments wholly past the file, trim ones that
-     * straddle it. */
-    {
-        int kept = 0;
-        for (int i = 0; i < nseg; i++)
-        {
-            if (seg_from[i] >= word_count)
-                continue;
-            if (seg_to[i] >= word_count)
-                seg_to[i] = word_count - 1;
-            seg_from[kept] = seg_from[i];
-            seg_to[kept]   = seg_to[i];
-            seg_rom[kept]  = seg_rom[i];
-            kept++;
-        }
-        nseg = kept;
-    }
-    if (nseg == 0)
-    {
-        fn->ram[OFS(FUJI_MB_BOOT_ERR)] = FUJI_BOOT_ERR_CFGBAD;
-        return -1;
-    }
-
-    /* RAM sanitation: nothing over console space, total within the
-     * hardware budget. */
-    {
-        int kept = 0;
-        for (int i = 0; i < nram; i++)
-        {
-            if (ram_to[i] < 0x4000)
-                continue;
-            if (ram_from[i] < 0x4000)
-                ram_from[i] = 0x4000;
-            total_ram += ram_to[i] - ram_from[i] + 1;
-            ram_from[kept]  = ram_from[i];
-            ram_to[kept]    = ram_to[i];
-            ram_width[kept] = ram_width[i];
-            kept++;
-        }
-        nram = kept;
-    }
-    if (total_ram > 0x2800)
-    {
-        fn->ram[OFS(FUJI_MB_BOOT_ERR)] = FUJI_BOOT_ERR_RAM;
-        return -1;
-    }
-
-    for (int i = 0; i < nseg; i++)
-        if (fujinet_mailbox_overlap(seg_rom[i], seg_to[i] - seg_from[i] + 1))
-            *disable_mb = 1;
-    for (int i = 0; i < nram; i++)
-        if (fujinet_mailbox_overlap(ram_from[i], ram_to[i] - ram_from[i] + 1))
-            *disable_mb = 1;
-
-    for (int i = 0; i < nseg; i++)
-        icartrom_addseg(rom, (uint16_t *)(words + seg_from[i]), seg_rom[i],
-                        seg_to[i] - seg_from[i] + 1, ICARTROM_READ, 0);
-    for (int i = 0; i < nram; i++)
-        icartrom_addseg(rom, NULL, ram_from[i], ram_to[i] - ram_from[i] + 1,
-                        (uint8_t)(ICARTROM_READ | ICARTROM_WRITE |
-                                  (ram_width[i] == 8 ? ICARTROM_NARROW : 0)),
-                        0);
-
-    return nseg;
+#if defined(_WIN32) || defined(WIN32)
+    _mkdir(path);
+#else
+    mkdir(path, 0777);
+#endif
 }
 
 /* ======================================================================== */
-/*  FUJINET_APPLY_ROM -- Decodes the buffered ROM push (fn->rom_buf) into   */
-/*                       the live icart_t, same three-way format precedence */
-/*                       inty_cart.c's apply_boot_mapping() uses: an       */
-/*                       Intellicart/CC3 self-describing header first (we   */
-/*                       reuse jzIntv's own icartrom_decode() rather than   */
-/*                       hand-rolling it), then a .cfg sibling's "$from -   */
-/*                       $to = $rom" lines, then a size-guess table for a   */
-/*                       bare flat .bin. Returns nonzero on success, with   */
-/*                       fn->icart->rom populated and ready for            */
-/*                       icart_register()+periph_reset() by the caller.    */
+/*  FUJINET_WRITE_FILE -- Dumps a buffer to a path.  Returns 0 on success.  */
+/* ======================================================================== */
+LOCAL int fujinet_write_file(const char *path, const void *data, size_t len)
+{
+    FILE *f = fopen(path, "wb");
+    size_t wrote;
+
+    if (!f)
+        return -1;
+
+    wrote = len ? fwrite(data, 1, len, f) : 0;
+
+    /*  fclose() is where a full filesystem usually surfaces, so its result  */
+    /*  matters as much as fwrite()'s -- a short stage would look exactly    */
+    /*  like a truncated push to everything downstream.                      */
+    if (fclose(f) != 0 || wrote != len)
+    {
+        remove(path);
+        return -1;
+    }
+
+    return 0;
+}
+
+/* ======================================================================== */
+/*  FUJINET_SAVEGAME_PATH -- Builds the JLP save-file path for the pushed   */
+/*                       title, from the FUJICMD_SET_DEVICE_FULLPATH the    */
+/*                       config ROM sent just before MOUNT_IMAGE.  Mirrors  */
+/*                       config_jlp() on the RP2040, which does the same    */
+/*                       thing with its own last_boot_path: take the        */
+/*                       basename, swap the extension, and keep it beside   */
+/*                       the boot staging area so the save survives the     */
+/*                       session.  Falls back to "network" when nothing     */
+/*                       was staged, same as the firmware's "network.rom".  */
+/* ======================================================================== */
+LOCAL void fujinet_savegame_path(fujinet_t *const fn, char *out, size_t out_sz)
+{
+    const char *base = fn->last_boot_path;
+    char        stem[128];
+    const char *slash, *dot;
+    size_t      n, i;
+
+    /*  Basename: the path is a *remote* one (TNFS/SD host slot), so accept  */
+    /*  either separator regardless of what this platform uses locally.      */
+    for (slash = base; *slash; slash++)
+        if (*slash == '/' || *slash == '\\')
+            base = slash + 1;
+
+    if (!*base)
+        base = "network";
+
+    dot = strrchr(base, '.');
+    n   = dot && dot != base ? (size_t)(dot - base) : strlen(base);
+    if (n > sizeof(stem) - 1)
+        n = sizeof(stem) - 1;
+    memcpy(stem, base, n);
+    stem[n] = 0;
+
+    /*  Whatever came off the wire is now going to be part of a local path.  */
+    /*  Keep it to characters that can't walk out of the directory or upset  */
+    /*  a shell-quoting-free fopen() on any of the platforms this builds on. */
+    for (i = 0; i < n; i++)
+    {
+        unsigned char c = (unsigned char)stem[i];
+        if (!((c >= '0' && c <= '9') || (c >= 'A' && c <= 'Z') ||
+              (c >= 'a' && c <= 'z') || c == '-' || c == '_'))
+            stem[i] = '_';
+    }
+    if (!stem[0])
+        strcpy(stem, "network");
+
+    snprintf(out, out_sz, "%s%cjlpsave%c%s.jlp",
+             fn->bootstage_dir, PATH_SEP, PATH_SEP, stem);
+}
+
+/* ======================================================================== */
+/*  FUJINET_RECACHEABLE_CONSOLE -- Re-marks the cacheable ranges that       */
+/*                       belong to the console rather than to any cart.     */
+/*                                                                          */
+/*  cp1600_uncacheable_all() is deliberately blunt -- it has no way to tell */
+/*  the outgoing cart's marks from anyone else's -- so the ranges cfg.c     */
+/*  sets up once at machine build have to be put back afterwards.  Keep     */
+/*  this list in step with cfg_init()'s own, right after its                */
+/*  legacy_register()/icart_register() call: system RAM (snooped, since     */
+/*  it's writable), the EXEC ROM, and GROM.  The FujiNet window itself is   */
+/*  re-marked here too, for the same reason cfg.c marks it: not cacheable,  */
+/*  because its cells change underneath the CPU.                            */
+/* ======================================================================== */
+LOCAL void fujinet_recacheable_console(fujinet_t *const fn)
+{
+    cp1600_t *const cpu = (cp1600_t *)fn->cpu;
+
+    cp1600_cacheable(cpu, 0x0200, 0x035F, 1);
+    cp1600_cacheable(cpu, 0x1000, 0x1FFF, 0);
+    cp1600_cacheable(cpu, 0x3000, 0x37FF, 0);
+    cp1600_cacheable(cpu, 0x9C00, 0x9FFF, 0);
+}
+
+/* ======================================================================== */
+/*  FUJINET_RETIRE_CART -- Unbinds whatever cart currently owns the bus.    */
+/*                                                                          */
+/*  periph_register() only ever ORs a device into the address decode, so    */
+/*  without this the outgoing map keeps answering next to the incoming one  */
+/*  and the wire-AND bus hands the CPU the AND of the two.  Note the        */
+/*  asymmetry with free(): periph_unregister() deliberately leaves the      */
+/*  device on the bus' linked list (see periph.h), because that list still  */
+/*  owns its reset/serialize/dtor duties.  So a retired legacy_t is parked  */
+/*  on fn->retired[] and freed by nobody until periph_delete() runs its     */
+/*  dtor at teardown.  A session that pushes many carts therefore grows by  */
+/*  the size of each one's decoded image; a handful of pushes is what this  */
+/*  is actually used for.                                                   */
+/* ======================================================================== */
+LOCAL void fujinet_retire_cart(fujinet_t *const fn)
+{
+    legacy_t *const old = (legacy_t *)fn->legacy;
+    int i;
+
+    if (!old)
+    {
+        /*  Still the startup cart (the config ROM, or whatever ROM jzIntv   */
+        /*  was given on the command line).                                  */
+        icart_unregister((icart_t *)fn->icart, fn->bus);
+        return;
+    }
+
+    periph_unregister(fn->bus, &old->periph);
+    for (i = 0; i < old->npg_rom; i++)
+        periph_unregister(fn->bus, &old->pg_rom[i].periph);
+
+    if (fn->n_retired == fn->retired_cap)
+    {
+        int    newcap = fn->retired_cap ? fn->retired_cap * 2 : 4;
+        void **grown  = (void **)realloc(fn->retired, newcap * sizeof(void *));
+
+        /*  Can't park it: leave it out of the list rather than dropping the */
+        /*  pointer.  It stays unbound and reachable through the bus, which  */
+        /*  is all the list is for anyway.                                   */
+        if (grown)
+        {
+            fn->retired     = grown;
+            fn->retired_cap = newcap;
+        }
+    }
+    if (fn->n_retired < fn->retired_cap)
+        fn->retired[fn->n_retired++] = old;
+
+    fn->legacy = NULL;
+}
+
+/* ======================================================================== */
+/*  FUJINET_APPLY_JLP -- Brings up JLP for a pushed title that asked for it */
+/*                       in its .cfg [vars], the same way cfg.c does for a  */
+/*                       command-line --jlp.                                */
+/*                                                                          */
+/*  JLP claims $8000-$9FFF whole, which swallows the mailbox window -- so   */
+/*  the caller disables the mailbox for the session, exactly as it does for */
+/*  a cart whose own segments cover it.  The RP2040 rejects this            */
+/*  combination outright (FUJI_BOOT_ERR_MAILBOX) because it has one RAM     */
+/*  window to hand out; jzIntv can simply stop answering there and let JLP  */
+/*  have it.                                                                */
+/* ======================================================================== */
+LOCAL int fujinet_apply_jlp(fujinet_t *const fn, int jlp_accel, int jlp_flash)
+{
+    jlp_t *jlp = (jlp_t *)fn->jlp;
+    char   sgpath[512];
+
+    if (!jlp)
+    {
+        jlp = CALLOC(jlp_t, 1);
+        if (!jlp)
+            return -1;
+        fn->jlp = jlp;
+    } else if (jlp->periph.dtor)
+    {
+        /*  Second JLP push this session.  jlp_init() left its own dtor      */
+        /*  here; running it closes the previous save file and frees the RAM */
+        /*  and flash images before we allocate replacements.  It leaves     */
+        /*  jlp->sg_file dangling, though, and jlp_init() only reassigns     */
+        /*  that when it manages to open the new one -- so clear the data    */
+        /*  fields wholesale rather than naming them and hoping the list     */
+        /*  stays right.                                                     */
+        /*                                                                   */
+        /*  The periph_t has to survive that memset verbatim: this jlp_t is  */
+        /*  already on the bus' linked list, and periph.next is what links   */
+        /*  the *rest* of that list.  Zeroing it drops every peripheral      */
+        /*  behind this one -- no reset, no dtor, and periph.bus NULL, so    */
+        /*  periph_register() below would happily "re-add" it a second time. */
+        const periph_t saved = jlp->periph;
+        jlp->periph.dtor(&jlp->periph);
+        memset(jlp, 0, sizeof(*jlp));
+        jlp->periph = saved;
+    }
+
+    fujinet_savegame_path(fn, sgpath, sizeof(sgpath));
+    {
+        char dir[512];
+        snprintf(dir, sizeof(dir), "%s%cjlpsave", fn->bootstage_dir, PATH_SEP);
+        fujinet_mkdir(dir);
+    }
+
+    if (jlp_init(jlp, sgpath, &((cp1600_t *)fn->cpu)->xr[0],
+                 jlp_accel, jlp_flash, 0))
+        return -1;
+
+    if (!fn->jlp_registered)
+    {
+        periph_register(fn->bus, &jlp->periph, 0x8000, 0x9FFF, "JLP Support");
+        fn->jlp_registered = 1;
+    }
+
+    if (fn->debug)
+        jzp_printf("FUJINET: JLP accel=%d flash=%d savegame=%s\n",
+                   jlp_accel, jlp_flash, sgpath);
+
+    return 0;
+}
+
+/* ======================================================================== */
+/*  FUJINET_APPLY_BINCFG -- Loads a pushed .bin + .cfg pair through         */
+/*                       jzIntv's own legacy BIN+CFG loader and hands it    */
+/*                       the bus.                                           */
+/*                                                                          */
+/*  This replaces a hand-rolled port of the RP2040's parse_pushed_cfg(),    */
+/*  which topped out at 16 [mapping] lines, silently dropped the "PAGE n"   */
+/*  suffix, and never looked at [vars] at all.  Every large homebrew is     */
+/*  past all three limits at once: Cloudfire has 24 mapping lines of which  */
+/*  13 are pages of $A000 plus jlp=3, Pacmanthology has 30 of which 27 are  */
+/*  paged plus ROM at $8000-$9FFF under the JLP window.  None of that is    */
+/*  expressible in the icartrom_t the old path built -- it has one flat 64K */
+/*  image[] and no paged storage, and icart.c's own loader warns that a JLP */
+/*  title with readable Intellicart segments in $80-$9F cannot work.        */
+/*                                                                          */
+/*  legacy_t is the object that can: mem/mem.c paged ROMs for "PAGE n",     */
+/*  and legacy_read()/legacy_write()'s jlp_accel_on check for the JLP       */
+/*  window flip.  Nothing here is new emulation -- it is the same code path */
+/*  "jzintv game.bin" has always taken, which is also what makes a pushed   */
+/*  cart and a locally loaded one behave identically.                       */
+/*                                                                          */
+/*  The RP2040's *local-storage* loader (load_cfg() in intellicart.c) does  */
+/*  parse "PAGE n" and [vars] jlp; only its pushed-cfg path is narrower,    */
+/*  and only because an MCU has to stage into fixed tables.  So this is     */
+/*  catching up to the firmware, not diverging from it -- with the one      */
+/*  consequence that jzIntv now boots pushed carts the firmware's pushed    */
+/*  path still rejects, and that its 0x2800-word cart RAM budget            */
+/*  (FUJI_BOOT_ERR_RAM) no longer applies here.                             */
+/*                                                                          */
+/*  Returns nonzero on success, having already registered the new cart.     */
+/*  On failure FUJI_MB_BOOT_ERR is set and the outgoing cart is untouched.  */
+/* ======================================================================== */
+LOCAL int fujinet_apply_bincfg(fujinet_t *const fn, int *const disable_mb)
+{
+    char      binpath[512], cfgpath[512];
+    legacy_t *l;
+    int       jlp_accel = 0, jlp_flash = 0;
+
+    snprintf(binpath, sizeof(binpath), "%s%cjzintv-fnboot.bin",
+             fn->bootstage_dir, PATH_SEP);
+    snprintf(cfgpath, sizeof(cfgpath), "%s%cjzintv-fnboot.cfg",
+             fn->bootstage_dir, PATH_SEP);
+
+    /*  bc_parse_cfg()/bc_read_data() read from files, so the push has to    */
+    /*  land on disk before the loader can see it.  A staging failure is a   */
+    /*  short image from everything downstream's point of view, so report    */
+    /*  it as one.                                                           */
+    if (fujinet_write_file(binpath, fn->rom_buf, fn->rom_len) ||
+        fujinet_write_file(cfgpath, fn->cfg_buf, fn->cfg_len))
+    {
+        fprintf(stderr, "FUJINET: could not stage the pushed cart under "
+                        "'%s'\n", fn->bootstage_dir);
+        fn->ram[OFS(FUJI_MB_BOOT_ERR)] = FUJI_BOOT_ERR_TRUNCATED;
+        return 0;
+    }
+
+    l = CALLOC(legacy_t, 1);
+    if (!l)
+    {
+        fn->ram[OFS(FUJI_MB_BOOT_ERR)] = FUJI_BOOT_ERR_TRUNCATED;
+        return 0;
+    }
+
+    /*  -1/-1 for the JLP flags is what cfg.c passes when the user gave no  */
+    /*  --jlp options: the .cfg's own [vars] decide.  rand_mem 0 keeps a    */
+    /*  pushed boot reproducible.                                           */
+    if (legacy_read_bincfg(binpath, cfgpath, l, fn->cpu, -1, -1, 0))
+    {
+        free(l);
+        fn->ram[OFS(FUJI_MB_BOOT_ERR)] = FUJI_BOOT_ERR_CFGBAD;
+        return 0;
+    }
+
+    /* -------------------------------------------------------------------- */
+    /*  Everything that needs the parsed config has to happen here:          */
+    /*  legacy_register() frees l->bc on its way out.                        */
+    /* -------------------------------------------------------------------- */
+    jlp_accel = l->jlp_accel;
+    if (l->bc && l->bc->metadata)
+        jlp_flash = l->bc->metadata->jlp_flash;
+
+    if (l->bc)
+    {
+        const bc_memspan_t *span;
+        for (span = l->bc->span; span; span = (const bc_memspan_t *)span->l.next)
+            if (fujinet_mailbox_overlap(span->s_addr,
+                                        span->e_addr - span->s_addr + 1))
+                *disable_mb = 1;
+    }
+
+    /*  JLP's window is $8000-$9FFF, which contains the mailbox outright.    */
+    if (jlp_accel > 0)
+        *disable_mb = 1;
+
+    /* -------------------------------------------------------------------- */
+    /*  Commit.  Past this point the old cart is gone, so nothing below may  */
+    /*  fail in a way that leaves the console with no cart at all.           */
+    /* -------------------------------------------------------------------- */
+    fujinet_retire_cart(fn);
+    cp1600_uncacheable_all((cp1600_t *)fn->cpu);
+
+    legacy_init_periph(l);
+    legacy_register(l, fn->bus, (cp1600_t *)fn->cpu);
+    fujinet_recacheable_console(fn);
+    fn->legacy = l;
+
+    if (jlp_accel > 0 && fujinet_apply_jlp(fn, jlp_accel, jlp_flash))
+        fprintf(stderr, "FUJINET: JLP setup failed; the cart will run "
+                        "without it\n");
+
+    return 1;
+}
+
+/* ======================================================================== */
+/*  FUJINET_APPLY_ROM -- Turns the buffered ROM push (fn->rom_buf) into a   */
+/*                       registered cartridge, with the same three-way      */
+/*                       format precedence inty_cart.c's                    */
+/*                       apply_boot_mapping() uses:                         */
+/*                                                                          */
+/*                         1. An Intellicart/CC3 self-describing header,    */
+/*                            through jzIntv's own icartrom_decode() --     */
+/*                            bankswitching, CRCs, metadata and all -- into */
+/*                            the live icart_t.                             */
+/*                         2. A .cfg sibling, through jzIntv's own legacy   */
+/*                            BIN+CFG loader.  See fujinet_apply_bincfg()   */
+/*                            for why that and not the icart_t -- this is   */
+/*                            the branch that differs most from the RP2040. */
+/*                         3. A size-guess table for a bare flat .bin, also */
+/*                            into the icart_t.                             */
+/*                                                                          */
+/*                       Returns nonzero on success, with the new cart      */
+/*                       already registered on the bus and the old one      */
+/*                       unbound; the caller still owes it the CPU decode-  */
+/*                       cache flush and the console reset.                 */
 /* ======================================================================== */
 LOCAL int fujinet_apply_rom(fujinet_t *const fn)
 {
@@ -619,6 +840,7 @@ LOCAL int fujinet_apply_rom(fujinet_t *const fn)
         return 0;
 
     icart_t *const ic = (icart_t *)fn->icart;
+    int disable_mb = 0;
 
     /*  Ran out of memory growing rom_buf mid-push: what we hold is a       */
     /*  short image, and booting it would be worse than saying so.          */
@@ -649,7 +871,6 @@ LOCAL int fujinet_apply_rom(fujinet_t *const fn)
         return 0;
 
     int committed = 0;
-    int disable_mb = 0;
 
     /* Try the Intellicart/CC3 self-describing header first -- same format
      * inty_cart.c's ROMFMT_HDR path decodes, and jzIntv already has a full
@@ -665,6 +886,36 @@ LOCAL int fujinet_apply_rom(fujinet_t *const fn)
             if (((scratch->readable[pg >> 5] | scratch->writable[pg >> 5]) >>
                  (pg & 31)) & 1)
                 disable_mb = 1;
+    } else if (fn->have_cfg && fn->rom_len)
+    {
+        /* ------------------------------------------------------------------ */
+        /*  Not a header image, but a .cfg sibling came with it: that's a      */
+        /*  BIN+CFG pair, and jzIntv has a loader for those already.  It       */
+        /*  registers the cart itself (a legacy_t's paged ROMs are separate    */
+        /*  peripherals), so unwind the scratch icartrom_t and hand off.       */
+        /*                                                                     */
+        /*  The header probe still goes first, matching both inty_cart.c's     */
+        /*  precedence and legacy_bincfg()'s own .rom-before-.bin ordering:    */
+        /*  a .rom that happens to sit beside a same-basename .cfg gets both   */
+        /*  pushed, and decoding it as a flat .bin would be silent garbage.    */
+        /*  icartrom_decode() validates the segment table and CRCs, so it      */
+        /*  won't claim a real .bin by accident.                               */
+        /* ------------------------------------------------------------------ */
+        if (scratch->metadata)
+            free(scratch->metadata);
+        free(scratch);
+
+        if (!fujinet_apply_bincfg(fn, &disable_mb))
+            return 0;
+
+        if (disable_mb)
+        {
+            fn->mailbox_active = 0;
+            if (fn->debug)
+                jzp_printf("FUJINET: mapping covers the mailbox window -- "
+                           "mailbox disabled for this session\n");
+        }
+        return 1;
     } else
     {
         icartrom_init(scratch); /* A failed decode may have partially
@@ -681,17 +932,12 @@ LOCAL int fujinet_apply_rom(fujinet_t *const fn)
                 words[i] = ((uint16_t)fn->rom_buf[2*i] << 8) |
                             fn->rom_buf[2*i + 1];
 
-            int cfg_rc = fn->have_cfg
-                       ? fujinet_parse_cfg_mapping_into(scratch, fn, words,
-                                                        word_count, &disable_mb)
-                       : 0;
-            if (cfg_rc > 0)
-            {
-                committed = 1;
-            } else if (cfg_rc == 0)
             {
                 /* Size-guess table, same as inty_cart.c's
-                 * apply_boot_mapping() default branch. */
+                 * apply_boot_mapping() default branch.  Only reachable with
+                 * no .cfg at all: a pushed pair went to the legacy loader
+                 * above, and refusing to guess is the point -- a wrong map
+                 * is worse than an honest FUJI_BOOT_ERR_NOMAP. */
                 uint32_t nseg = 0, from[3], to[3], rom_addr[3];
                 switch (fn->rom_len)
                 {
@@ -738,8 +984,6 @@ LOCAL int fujinet_apply_rom(fujinet_t *const fn)
                     }
                 }
             }
-            /* cfg_rc < 0: the cfg was the mapping source but unusable --
-             * BOOT_ERR is already set, don't guess. */
         }
 
         free(words);
@@ -759,6 +1003,18 @@ LOCAL int fujinet_apply_rom(fujinet_t *const fn)
                 jzp_printf("FUJINET: mapping covers the mailbox window -- "
                            "mailbox disabled for this session\n");
         }
+
+        /* Drop the outgoing cart's address decode bindings first.
+         * periph_register() only ever adds, so without this the config ROM's
+         * own map keeps answering next to the new game's -- and on the
+         * Intellivision's wire-AND bus the CPU gets the AND of the two. The
+         * config ROM declares 8-bit RAM over $8000-$9BFF, so every pushed
+         * game with a segment there (the 12K-at-$9000 shape most 32K/48K
+         * carts use) came back with its high byte silently masked off. */
+        fujinet_retire_cart(fn);
+        cp1600_uncacheable_all((cp1600_t *)fn->cpu);
+        icart_register(ic, fn->bus, (cp1600_t *)fn->cpu, fn->cache_flags);
+        fujinet_recacheable_console(fn);
     } else if (scratch->metadata)
     {
         free(scratch->metadata);
@@ -844,34 +1100,25 @@ LOCAL void fujinet_handle_dbc_frame(fujinet_t *const fn, const fb_reply_t *req)
             if (boot_ok)
             {
                 fn->ram[OFS(FUJI_MB_BOOT_PCT)] = 100;
-                /* Drop the outgoing cart's address decode bindings first.
-                 * periph_register() only ever adds, so without this the
-                 * config ROM's own map keeps answering next to the new
-                 * game's -- and on the Intellivision's wire-AND bus the CPU
-                 * gets the AND of the two. The config ROM declares 8-bit
-                 * RAM over $8000-$9BFF, so every pushed game with a segment
-                 * there (the 12K-at-$9000 shape most 32K/48K carts use)
-                 * came back with its high byte silently masked off. */
-                icart_unregister((icart_t *)fn->icart, fn->bus);
-                icart_register((icart_t *)fn->icart, fn->bus,
-                               (cp1600_t *)fn->cpu, fn->cache_flags);
-                /* icart_register() just repointed the ROM address decoder
-                 * (and re-marked ranges cacheable) -- it does NOT know
-                 * about, let alone clear, any instructions the CP-1610
-                 * already decoded and cached at those addresses from
-                 * whatever occupied them before (the config ROM's boot
-                 * menu, or a previously-loaded game). Left alone, the CPU
-                 * would keep executing those stale decodes -- including a
-                 * cached HLT from a spot that used to be unmapped -- right
-                 * over the top of the freshly-pushed ROM's real bytes.
-                 * Flush the whole decode cache so every fetch after reset
-                 * re-decodes from the new memory contents. */
+                /* fujinet_apply_rom() has already unbound the outgoing cart
+                 * and registered the new one (which flavor depends on the
+                 * push format -- see its header). What it has NOT done, and
+                 * cannot, is tell the CP-1610 about instructions it already
+                 * decoded and cached at those addresses from whatever
+                 * occupied them before (the config ROM's boot menu, or a
+                 * previously-loaded game). Left alone, the CPU would keep
+                 * executing those stale decodes -- including a cached HLT
+                 * from a spot that used to be unmapped -- right over the top
+                 * of the freshly-pushed ROM's real bytes. Flush the whole
+                 * decode cache so every fetch after reset re-decodes from
+                 * the new memory contents. */
                 cp1600_invalidate((cp1600_t *)fn->cpu, 0x0000, 0xFFFF);
-                /* fujinet_apply_rom() just memset-zeroed and repopulated
-                 * fn->icart's *live* rom.image[] in place -- the very same
-                 * icart_t that's still registered on the bus and backing
-                 * whatever the CPU is executing right now (the config ROM's
-                 * own mailbox-polling loop, mid-"DO NOT POWER OFF"). Any
+                /* On the icart path, fujinet_apply_rom() just memset-zeroed
+                 * and repopulated fn->icart's *live* rom.image[] in place --
+                 * the very same icart_t that's still registered on the bus
+                 * and backing whatever the CPU is executing right now (the
+                 * config ROM's own mailbox-polling loop, mid-"DO NOT POWER
+                 * OFF"). Any
                  * address the old boot ROM used that the new game's segment
                  * map doesn't cover (e.g. the boot menu's own code, off in
                  * $D000+) is now permanently zero, i.e. HLT.
@@ -1132,15 +1379,51 @@ LOCAL void fujinet_dtor(periph_t *const per)
     fujinet_dbc_stream_close(fn);
     CONDFREE(fn->host);
     CONDFREE(fn->bootdump_prefix);
+    CONDFREE(fn->bootstage_dir);
     CONDFREE(fn->rom_buf);
+
+    /*  fn->legacy / fn->retired[] / fn->jlp are peripherals in their own    */
+    /*  right and sit on the bus' list, which is what runs their dtors --    */
+    /*  and may already have, since periph_delete() walks that list in an    */
+    /*  order we don't control.  Freeing the containers here could be a      */
+    /*  double free of everything inside them.  jzIntv doesn't free any of   */
+    /*  its other peripherals either (they're members of cfg_t); these just  */
+    /*  came off the heap instead.  Only the index array is ours.            */
+    CONDFREE(fn->retired);
 }
 
 /* ======================================================================== */
-/*  FUJINET_INIT      -- Sets up the FujiNet mailbox peripheral.            */
+/*  FUJINET_PICK_BOOTSTAGE_DIR -- Falls back to a system scratch directory  */
+/*                       when --fujinet-bootdir wasn't given.               */
+/*                                                                          */
+/*  The hosts that embed this emulator (fujinet-go-intv and its desktop     */
+/*  sibling) always pass their own writable data directory, which is the    */
+/*  only thing that works on Android, where an app process has no TMPDIR    */
+/*  and no writable cwd.  This is for standalone `jzintv --fujinet` runs.   */
 /* ======================================================================== */
+LOCAL char *fujinet_pick_bootstage_dir(void)
+{
+    static const char *const vars[] = { "TMPDIR", "TEMP", "TMP" };
+    unsigned i;
+
+    for (i = 0; i < sizeof(vars) / sizeof(vars[0]); i++)
+    {
+        const char *v = getenv(vars[i]);
+        if (v && *v)
+            return strdup(v);
+    }
+
+#if defined(_WIN32) || defined(WIN32)
+    return strdup(".");
+#else
+    return strdup("/tmp");
+#endif
+}
+
 int fujinet_init(fujinet_t *const fujinet, const char *const host,
                   const int port, const int debug,
                   const char *const bootdump_prefix,
+                  const char *const bootstage_dir,
                   void *const icart, void *const cpu,
                   periph_bus_t *const bus, const uint32_t cache_flags)
 {
@@ -1161,6 +1444,16 @@ int fujinet_init(fujinet_t *const fujinet, const char *const host,
     fujinet->bootdump_prefix = bootdump_prefix ? strdup(bootdump_prefix) : NULL;
     fujinet->bootdump_fh     = NULL;
     fujinet->bootdump_stream = -1;
+
+    fujinet->bootstage_dir = bootstage_dir && *bootstage_dir
+                            ? strdup(bootstage_dir)
+                            : fujinet_pick_bootstage_dir();
+    if (!fujinet->bootstage_dir)
+    {
+        fprintf(stderr, "ERROR:  FujiNet: out of memory\n");
+        return -1;
+    }
+    fujinet_mkdir(fujinet->bootstage_dir);
 
     fujinet->icart       = icart;
     fujinet->cpu         = cpu;

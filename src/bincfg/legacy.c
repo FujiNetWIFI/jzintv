@@ -516,9 +516,9 @@ fail:
 /* ======================================================================== */
 /*  LEGACY_READ_BINCFG -- Reads a .BIN and optional .CFG file.              */
 /* ======================================================================== */
-LOCAL int legacy_read_bincfg(const char *bin_fn, const char *cfg_fn,
-                             legacy_t *l, void *cpu, int jlp_accel,
-                             int jlp_flash, int rand_mem)
+int legacy_read_bincfg(const char *bin_fn, const char *cfg_fn,
+                       legacy_t *l, void *cpu, int jlp_accel,
+                       int jlp_flash, int rand_mem)
 {
     LZFILE *fc;
     bc_cfgfile_t *bc;
@@ -616,6 +616,35 @@ LOCAL void legacy_dtor(periph_t *p)
 
     if (l->bc)
         bc_free_cfg(l->bc);
+}
+
+/* ======================================================================== */
+/*  LEGACY_INIT_PERIPH -- Fills in the periph_t function pointers for a     */
+/*                       legacy_t that legacy_read_bincfg() has populated.  */
+/*                       legacy_bincfg() does this itself on the way out;   */
+/*                       callers that drive legacy_read_bincfg() directly   */
+/*                       -- the FujiNet boot receiver, which has the pushed */
+/*                       .bin/.cfg staged on disk and no path to search --  */
+/*                       have to call it themselves before                  */
+/*                       legacy_register().                                 */
+/* ======================================================================== */
+void legacy_init_periph(legacy_t *l)
+{
+    /* -------------------------------------------------------------------- */
+    /*  Set up peripheral function pointers to support reads of the right   */
+    /*  width.  Ignore writes and explicitly disallow ticks.                */
+    /* -------------------------------------------------------------------- */
+    l->periph.read        = legacy_read;
+    l->periph.write       = legacy_write;
+    l->periph.peek        = legacy_read;
+    l->periph.poke        = legacy_poke;
+    l->periph.dtor        = legacy_dtor;
+
+    l->periph.tick        = NULL;
+    l->periph.min_tick    = ~0U;
+    l->periph.max_tick    = ~0U;
+    l->periph.addr_base   = 0;
+    l->periph.addr_mask   = 0xFFFF;
 }
 
 /* ======================================================================== */
@@ -962,21 +991,7 @@ finish:
     if (cfg1_fn) free(cfg1_fn);
     if (bin2_fn) free(bin2_fn); /*also frees cfg2/int2/itv2/rom2*/
 
-    /* -------------------------------------------------------------------- */
-    /*  Set up peripheral function pointers to support reads of the right   */
-    /*  width.  Ignore writes and explicitly disallow ticks.                */
-    /* -------------------------------------------------------------------- */
-    l->periph.read        = legacy_read;
-    l->periph.write       = legacy_write;
-    l->periph.peek        = legacy_read;
-    l->periph.poke        = legacy_poke;
-    l->periph.dtor        = legacy_dtor;
-
-    l->periph.tick        = NULL;
-    l->periph.min_tick    = ~0U;
-    l->periph.max_tick    = ~0U;
-    l->periph.addr_base   = 0;
-    l->periph.addr_mask   = 0xFFFF;
+    legacy_init_periph(l);
 
     return fn;
 }

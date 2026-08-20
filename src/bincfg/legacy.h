@@ -49,6 +49,38 @@ void legacy_poke (periph_t *per, periph_t *ign, uint32_t addr, uint32_t data);
 
 
 /* ======================================================================== */
+/*  LEGACY_READ_BINCFG -- Reads an explicitly named .BIN and optional .CFG  */
+/*                   into a legacy_t.  This is the guts of legacy_bincfg()  */
+/*                   below, minus its filename guessing and path search --  */
+/*                   exposed for the FujiNet boot receiver, which stages    */
+/*                   the pushed pair to known paths and needs neither.      */
+/*                                                                          */
+/*                   Pass -1 for jlp_accel/jlp_flash to let the .CFG's own  */
+/*                   [vars] decide, the same as cfg.c does when the user    */
+/*                   gave no --jlp flags.  Returns 0 on success.  The       */
+/*                   caller must legacy_init_periph() before                */
+/*                   legacy_register().                                     */
+/* ======================================================================== */
+int legacy_read_bincfg
+(
+    const char      *bin_fn,
+    const char      *cfg_fn,    /*  May be NULL.                    */
+    legacy_t        *l,
+    void            *cpu,
+    int             jlp_accel,
+    int             jlp_flash,
+    int             rand_mem
+);
+
+/* ======================================================================== */
+/*  LEGACY_INIT_PERIPH -- Fills in a populated legacy_t's periph_t function */
+/*                   pointers.  legacy_bincfg() calls this itself; direct   */
+/*                   legacy_read_bincfg() callers must call it before       */
+/*                   legacy_register().                                     */
+/* ======================================================================== */
+void legacy_init_periph(legacy_t *l);
+
+/* ======================================================================== */
 /*  LEGACY_BINCFG -- Try to determine if a file is BIN+CFG or ROM, and      */
 /*                   read it in if it is BIN+CFG.                           */
 /*                                                                          */

@@ -216,6 +216,31 @@ cp1600_cacheable
 
 /*
  * ============================================================================
+ *  CP1600_UNCACHEABLE_ALL -- Clears every cacheable/snoop bit, so the next
+ *                          round of cp1600_cacheable() calls starts from
+ *                          nothing.
+ *
+ *                          cp1600_cacheable() only ever ORs bits in, which
+ *                          is all a machine built once at startup needs.
+ *                          The FujiNet hot-swap (fujinet_apply_rom()) hands
+ *                          the bus to a completely different memory map
+ *                          mid-session, and the outgoing cart's cacheable
+ *                          pages would otherwise survive into it -- leaving
+ *                          the CP-1610 free to cache a decode of open bus
+ *                          at an address the new cart doesn't map.
+ *                          cp1600_invalidate() only throws away decodes
+ *                          that already happened; it doesn't stop the next
+ *                          one.  Nothing in the stock emulator calls this.
+ * ============================================================================
+ */
+void
+cp1600_uncacheable_all
+(
+    cp1600_t *const cp1600
+);
+
+/*
+ * ============================================================================
  *  CP1600_INVALIDATE    -- Invalidates a region of cached instructions.
  * ============================================================================
  */

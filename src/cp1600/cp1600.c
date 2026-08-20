@@ -495,6 +495,29 @@ void cp1600_cacheable
 
 /*
  * ============================================================================
+ *  CP1600_UNCACHEABLE_ALL -- Clears every cacheable bit and drops the snoop
+ *                          device's address decode bindings.  See cp1600.h
+ *                          for why this exists; only the FujiNet cart
+ *                          hot-swap uses it.
+ * ============================================================================
+ */
+void cp1600_uncacheable_all
+(
+    cp1600_t *const cp1600
+)
+{
+    memset(cp1600->cacheable, 0, sizeof(cp1600->cacheable));
+
+    /* ---------------------------------------------------------------------- */
+    /*  The snoop ranges came from the same cp1600_cacheable() calls, so they  */
+    /*  go with them -- the next cart's own calls re-register whatever it      */
+    /*  actually needs snooped.                                               */
+    /* ---------------------------------------------------------------------- */
+    periph_unregister(cp1600->periph.bus, &cp1600->snoop);
+}
+
+/*
+ * ============================================================================
  *  CP1600_INVALIDATE    -- Invalidates a region of cached instructions.
  * ============================================================================
  */
