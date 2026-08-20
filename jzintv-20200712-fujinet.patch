@@ -157,7 +157,7 @@ GPL v2 or later, same as jzIntv -- see COPYING.txt.
 
 diff --color -ruN -x .git -x .claude -x .gitignore -x README -x '*.o' -x '*.a' -x '*.dll' -x '*.exe' -x '*.rom' -x '*.bin' -x jzintv -x jzintv_batch -x .gitkeep -x README.md -x '*.patch' -x svn_revision.c a/examples/fujinet/fujitest.bas b/examples/fujinet/fujitest.bas
 --- a/examples/fujinet/fujitest.bas	1969-12-31 18:00:00.000000000 -0600
-+++ b/examples/fujinet/fujitest.bas	2026-08-19 21:51:46.000000000 -0500
++++ b/examples/fujinet/fujitest.bas	2026-08-20 07:31:59.000000000 -0500
 @@ -0,0 +1,145 @@
 +' fujitest.bas -- end-to-end FujiNet demo.
 +'
@@ -306,7 +306,7 @@ diff --color -ruN -x .git -x .claude -x .gitignore -x README -x '*.o' -x '*.a' -
 +end
 diff --color -ruN -x .git -x .claude -x .gitignore -x README -x '*.o' -x '*.a' -x '*.dll' -x '*.exe' -x '*.rom' -x '*.bin' -x jzintv -x jzintv_batch -x .gitkeep -x README.md -x '*.patch' -x svn_revision.c a/examples/fujinet/README.txt b/examples/fujinet/README.txt
 --- a/examples/fujinet/README.txt	1969-12-31 18:00:00.000000000 -0600
-+++ b/examples/fujinet/README.txt	2026-08-19 21:51:46.000000000 -0500
++++ b/examples/fujinet/README.txt	2026-08-20 07:31:59.000000000 -0500
 @@ -0,0 +1,66 @@
 +FUJINET MAILBOX TEST
 +
@@ -376,7 +376,7 @@ diff --color -ruN -x .git -x .claude -x .gitignore -x README -x '*.o' -x '*.a' -
 +    bin2rom fujitest
 diff --color -ruN -x .git -x .claude -x .gitignore -x README -x '*.o' -x '*.a' -x '*.dll' -x '*.exe' -x '*.rom' -x '*.bin' -x jzintv -x jzintv_batch -x .gitkeep -x README.md -x '*.patch' -x svn_revision.c a/ReleaseNotes_FujiNet.txt b/ReleaseNotes_FujiNet.txt
 --- a/ReleaseNotes_FujiNet.txt	1969-12-31 18:00:00.000000000 -0600
-+++ b/ReleaseNotes_FujiNet.txt	2026-08-20 07:30:24.878468541 -0500
++++ b/ReleaseNotes_FujiNet.txt	2026-08-20 07:31:59.000000000 -0500
 @@ -0,0 +1,281 @@
 +Release notes for the FujiNet fork.
 +Based on upstream jzIntv 20200712 (SVN r2110).  See ReleaseNotes_20200712.txt
@@ -661,7 +661,7 @@ diff --color -ruN -x .git -x .claude -x .gitignore -x README -x '*.o' -x '*.a' -
 +        target for regenerating the embedded ROM by hand.
 diff --color -ruN -x .git -x .claude -x .gitignore -x README -x '*.o' -x '*.a' -x '*.dll' -x '*.exe' -x '*.rom' -x '*.bin' -x jzintv -x jzintv_batch -x .gitkeep -x README.md -x '*.patch' -x svn_revision.c a/src/bincfg/legacy.c b/src/bincfg/legacy.c
 --- a/src/bincfg/legacy.c	2026-08-19 18:45:14.000000000 -0500
-+++ b/src/bincfg/legacy.c	2026-08-19 21:51:46.000000000 -0500
++++ b/src/bincfg/legacy.c	2026-08-20 07:31:59.000000000 -0500
 @@ -516,9 +516,9 @@
  /* ======================================================================== */
  /*  LEGACY_READ_BINCFG -- Reads a .BIN and optional .CFG file.              */
@@ -736,7 +736,7 @@ diff --color -ruN -x .git -x .claude -x .gitignore -x README -x '*.o' -x '*.a' -
  }
 diff --color -ruN -x .git -x .claude -x .gitignore -x README -x '*.o' -x '*.a' -x '*.dll' -x '*.exe' -x '*.rom' -x '*.bin' -x jzintv -x jzintv_batch -x .gitkeep -x README.md -x '*.patch' -x svn_revision.c a/src/bincfg/legacy.h b/src/bincfg/legacy.h
 --- a/src/bincfg/legacy.h	2026-08-19 18:45:14.000000000 -0500
-+++ b/src/bincfg/legacy.h	2026-08-19 21:51:46.000000000 -0500
++++ b/src/bincfg/legacy.h	2026-08-20 07:31:59.000000000 -0500
 @@ -49,6 +49,38 @@
  
  
@@ -778,7 +778,7 @@ diff --color -ruN -x .git -x .claude -x .gitignore -x README -x '*.o' -x '*.a' -
  /*                                                                          */
 diff --color -ruN -x .git -x .claude -x .gitignore -x README -x '*.o' -x '*.a' -x '*.dll' -x '*.exe' -x '*.rom' -x '*.bin' -x jzintv -x jzintv_batch -x .gitkeep -x README.md -x '*.patch' -x svn_revision.c a/src/cfg/cfg.c b/src/cfg/cfg.c
 --- a/src/cfg/cfg.c	2026-08-19 21:32:24.573743867 -0500
-+++ b/src/cfg/cfg.c	2026-08-19 21:51:46.000000000 -0500
++++ b/src/cfg/cfg.c	2026-08-20 07:31:59.000000000 -0500
 @@ -44,6 +44,8 @@
  #include "joy/joy.h"
  #include "serializer/serializer.h"
@@ -1066,7 +1066,7 @@ diff --color -ruN -x .git -x .claude -x .gitignore -x README -x '*.o' -x '*.a' -
      if (cfg->debugging)
 diff --color -ruN -x .git -x .claude -x .gitignore -x README -x '*.o' -x '*.a' -x '*.dll' -x '*.exe' -x '*.rom' -x '*.bin' -x jzintv -x jzintv_batch -x .gitkeep -x README.md -x '*.patch' -x svn_revision.c a/src/cfg/cfg.h b/src/cfg/cfg.h
 --- a/src/cfg/cfg.h	2026-08-19 21:32:24.573855517 -0500
-+++ b/src/cfg/cfg.h	2026-08-19 21:51:46.000000000 -0500
++++ b/src/cfg/cfg.h	2026-08-20 07:31:59.000000000 -0500
 @@ -66,6 +66,7 @@
      legacy_t    legacy;         /* Legacy BIN+CFG game program              */
      ecs_t       ecs;            /* Entertainment Computer System (ECS)      */
@@ -1077,7 +1077,7 @@ diff --color -ruN -x .git -x .claude -x .gitignore -x README -x '*.o' -x '*.a' -
      uint16_t    exec_img[4096 + 4096];
 diff --color -ruN -x .git -x .claude -x .gitignore -x README -x '*.o' -x '*.a' -x '*.dll' -x '*.exe' -x '*.rom' -x '*.bin' -x jzintv -x jzintv_batch -x .gitkeep -x README.md -x '*.patch' -x svn_revision.c a/src/cfg/mapping.c b/src/cfg/mapping.c
 --- a/src/cfg/mapping.c	2026-08-19 21:32:24.573896270 -0500
-+++ b/src/cfg/mapping.c	2026-08-19 21:51:46.000000000 -0500
++++ b/src/cfg/mapping.c	2026-08-20 07:31:59.000000000 -0500
 @@ -35,6 +35,7 @@
  #include "joy/joy.h"
  #include "serializer/serializer.h"
@@ -1088,7 +1088,7 @@ diff --color -ruN -x .git -x .claude -x .gitignore -x README -x '*.o' -x '*.a' -
  #include "mapping.h"
 diff --color -ruN -x .git -x .claude -x .gitignore -x README -x '*.o' -x '*.a' -x '*.dll' -x '*.exe' -x '*.rom' -x '*.bin' -x jzintv -x jzintv_batch -x .gitkeep -x README.md -x '*.patch' -x svn_revision.c a/src/cfg/subMakefile b/src/cfg/subMakefile
 --- a/src/cfg/subMakefile	2026-08-19 21:32:24.573934568 -0500
-+++ b/src/cfg/subMakefile	2026-08-19 21:51:46.000000000 -0500
++++ b/src/cfg/subMakefile	2026-08-20 07:31:59.000000000 -0500
 @@ -10,9 +10,10 @@
  cfg/cfg.$(O): bincfg/bincfg.h misc/types.h ecs/ecs.h
  cfg/cfg.$(O): demo/demo.h joy/joy.h cp1600/emu_link.h event/event.h 
@@ -1111,7 +1111,7 @@ diff --color -ruN -x .git -x .claude -x .gitignore -x README -x '*.o' -x '*.a' -
  
 diff --color -ruN -x .git -x .claude -x .gitignore -x README -x '*.o' -x '*.a' -x '*.dll' -x '*.exe' -x '*.rom' -x '*.bin' -x jzintv -x jzintv_batch -x .gitkeep -x README.md -x '*.patch' -x svn_revision.c a/src/cfg/usage.c b/src/cfg/usage.c
 --- a/src/cfg/usage.c	2026-08-19 21:32:24.573961810 -0500
-+++ b/src/cfg/usage.c	2026-08-19 21:51:46.000000000 -0500
++++ b/src/cfg/usage.c	2026-08-20 07:31:59.000000000 -0500
 @@ -234,6 +234,34 @@
  "            --cheat='<cheat>'     Adds a cheat code.  Up to 8 cheats can"  "\n"
  "                                  be added.  See doc/jzintv/cheat.txt."    "\n"
@@ -1149,7 +1149,7 @@ diff --color -ruN -x .git -x .claude -x .gitignore -x README -x '*.o' -x '*.a' -
                                                                              "\n"
 diff --color -ruN -x .git -x .claude -x .gitignore -x README -x '*.o' -x '*.a' -x '*.dll' -x '*.exe' -x '*.rom' -x '*.bin' -x jzintv -x jzintv_batch -x .gitkeep -x README.md -x '*.patch' -x svn_revision.c a/src/cp1600/cp1600.c b/src/cp1600/cp1600.c
 --- a/src/cp1600/cp1600.c	2026-08-19 18:45:14.000000000 -0500
-+++ b/src/cp1600/cp1600.c	2026-08-19 21:51:46.000000000 -0500
++++ b/src/cp1600/cp1600.c	2026-08-20 07:31:59.000000000 -0500
 @@ -495,6 +495,29 @@
  
  /*
@@ -1182,7 +1182,7 @@ diff --color -ruN -x .git -x .claude -x .gitignore -x README -x '*.o' -x '*.a' -
   */
 diff --color -ruN -x .git -x .claude -x .gitignore -x README -x '*.o' -x '*.a' -x '*.dll' -x '*.exe' -x '*.rom' -x '*.bin' -x jzintv -x jzintv_batch -x .gitkeep -x README.md -x '*.patch' -x svn_revision.c a/src/cp1600/cp1600.h b/src/cp1600/cp1600.h
 --- a/src/cp1600/cp1600.h	2026-08-19 18:45:14.000000000 -0500
-+++ b/src/cp1600/cp1600.h	2026-08-19 21:51:46.000000000 -0500
++++ b/src/cp1600/cp1600.h	2026-08-20 07:31:59.000000000 -0500
 @@ -216,6 +216,31 @@
  
  /*
@@ -1217,7 +1217,7 @@ diff --color -ruN -x .git -x .claude -x .gitignore -x README -x '*.o' -x '*.a' -
   */
 diff --color -ruN -x .git -x .claude -x .gitignore -x README -x '*.o' -x '*.a' -x '*.dll' -x '*.exe' -x '*.rom' -x '*.bin' -x jzintv -x jzintv_batch -x .gitkeep -x README.md -x '*.patch' -x svn_revision.c a/src/fujinet/fn_sock.c b/src/fujinet/fn_sock.c
 --- a/src/fujinet/fn_sock.c	1969-12-31 18:00:00.000000000 -0600
-+++ b/src/fujinet/fn_sock.c	2026-08-19 21:51:46.000000000 -0500
++++ b/src/fujinet/fn_sock.c	2026-08-20 07:31:59.000000000 -0500
 @@ -0,0 +1,334 @@
 +/*
 + * ============================================================================
@@ -1555,7 +1555,7 @@ diff --color -ruN -x .git -x .claude -x .gitignore -x README -x '*.o' -x '*.a' -
 +/* ======================================================================== */
 diff --color -ruN -x .git -x .claude -x .gitignore -x README -x '*.o' -x '*.a' -x '*.dll' -x '*.exe' -x '*.rom' -x '*.bin' -x jzintv -x jzintv_batch -x .gitkeep -x README.md -x '*.patch' -x svn_revision.c a/src/fujinet/fn_sock.h b/src/fujinet/fn_sock.h
 --- a/src/fujinet/fn_sock.h	1969-12-31 18:00:00.000000000 -0600
-+++ b/src/fujinet/fn_sock.h	2026-08-19 21:51:46.000000000 -0500
++++ b/src/fujinet/fn_sock.h	2026-08-20 07:31:59.000000000 -0500
 @@ -0,0 +1,121 @@
 +/*
 + * ============================================================================
@@ -1680,7 +1680,7 @@ diff --color -ruN -x .git -x .claude -x .gitignore -x README -x '*.o' -x '*.a' -
 +/* ======================================================================== */
 diff --color -ruN -x .git -x .claude -x .gitignore -x README -x '*.o' -x '*.a' -x '*.dll' -x '*.exe' -x '*.rom' -x '*.bin' -x jzintv -x jzintv_batch -x .gitkeep -x README.md -x '*.patch' -x svn_revision.c a/src/fujinet/fujibus.c b/src/fujinet/fujibus.c
 --- a/src/fujinet/fujibus.c	1969-12-31 18:00:00.000000000 -0600
-+++ b/src/fujinet/fujibus.c	2026-08-19 21:51:46.000000000 -0500
++++ b/src/fujinet/fujibus.c	2026-08-20 07:31:59.000000000 -0500
 @@ -0,0 +1,337 @@
 +// See fujibus.h. Ported line-for-line against
 +// lib/bus/rs232/FujiBusPacket.cpp in the main fujinet-firmware tree -- that
@@ -2021,7 +2021,7 @@ diff --color -ruN -x .git -x .claude -x .gitignore -x README -x '*.o' -x '*.a' -
 +}
 diff --color -ruN -x .git -x .claude -x .gitignore -x README -x '*.o' -x '*.a' -x '*.dll' -x '*.exe' -x '*.rom' -x '*.bin' -x jzintv -x jzintv_batch -x .gitkeep -x README.md -x '*.patch' -x svn_revision.c a/src/fujinet/fujibus.h b/src/fujinet/fujibus.h
 --- a/src/fujinet/fujibus.h	1969-12-31 18:00:00.000000000 -0600
-+++ b/src/fujinet/fujibus.h	2026-08-19 21:51:46.000000000 -0500
++++ b/src/fujinet/fujibus.h	2026-08-20 07:31:59.000000000 -0500
 @@ -0,0 +1,91 @@
 +// FujiBus/SLIP client for the RP2040 <-> ESP32-S3 (fujiversal-rs232) link.
 +//
@@ -2116,7 +2116,7 @@ diff --color -ruN -x .git -x .claude -x .gitignore -x README -x '*.o' -x '*.a' -
 +#endif /* FUJIBUS_H */
 diff --color -ruN -x .git -x .claude -x .gitignore -x README -x '*.o' -x '*.a' -x '*.dll' -x '*.exe' -x '*.rom' -x '*.bin' -x jzintv -x jzintv_batch -x .gitkeep -x README.md -x '*.patch' -x svn_revision.c a/src/fujinet/fuji_mailbox.h b/src/fujinet/fuji_mailbox.h
 --- a/src/fujinet/fuji_mailbox.h	1969-12-31 18:00:00.000000000 -0600
-+++ b/src/fujinet/fuji_mailbox.h	2026-08-19 21:51:46.000000000 -0500
++++ b/src/fujinet/fuji_mailbox.h	2026-08-20 07:31:59.000000000 -0500
 @@ -0,0 +1,131 @@
 +#ifndef FUJI_MAILBOX_H
 +#define FUJI_MAILBOX_H
@@ -2251,8 +2251,8 @@ diff --color -ruN -x .git -x .claude -x .gitignore -x README -x '*.o' -x '*.a' -
 +#endif /* FUJI_MAILBOX_H */
 diff --color -ruN -x .git -x .claude -x .gitignore -x README -x '*.o' -x '*.a' -x '*.dll' -x '*.exe' -x '*.rom' -x '*.bin' -x jzintv -x jzintv_batch -x .gitkeep -x README.md -x '*.patch' -x svn_revision.c a/src/fujinet/fujinet.c b/src/fujinet/fujinet.c
 --- a/src/fujinet/fujinet.c	1969-12-31 18:00:00.000000000 -0600
-+++ b/src/fujinet/fujinet.c	2026-08-20 07:15:56.806976822 -0500
-@@ -0,0 +1,1553 @@
++++ b/src/fujinet/fujinet.c	2026-08-20 07:48:21.030425336 -0500
+@@ -0,0 +1,1564 @@
 +/*
 + * ============================================================================
 + *  Title:    FujiNet mailbox peripheral
@@ -2301,6 +2301,17 @@ diff --color -ruN -x .git -x .claude -x .gitignore -x README -x '*.o' -x '*.a' -
 +#else
 +#  include <sys/stat.h>
 +#  include <sys/types.h>
++#endif
++
++/*  <winsock2.h> -- pulled in by fn_sock.h on Win32, several includes up --  */
++/*  defines s_addr as a macro for struct in_addr's S_un.S_addr.  bincfg.h's  */
++/*  bc_memspan_t has a field of the same name, which fujinet_apply_bincfg()  */
++/*  reads when it scans a pushed cart's spans for the mailbox window, so on  */
++/*  Windows that read expanded to span->S_un.S_addr and the build failed     */
++/*  there and only there.  Nothing in this file does socket work -- that is  */
++/*  fn_sock.c's job, and it needs the macro -- so drop it here.              */
++#ifdef s_addr
++#  undef s_addr
 +#endif
 +
 +/* Approximate CP-1610 clock rate that periph->now counts in (see
@@ -3808,7 +3819,7 @@ diff --color -ruN -x .git -x .claude -x .gitignore -x README -x '*.o' -x '*.a' -
 +/* ======================================================================== */
 diff --color -ruN -x .git -x .claude -x .gitignore -x README -x '*.o' -x '*.a' -x '*.dll' -x '*.exe' -x '*.rom' -x '*.bin' -x jzintv -x jzintv_batch -x .gitkeep -x README.md -x '*.patch' -x svn_revision.c a/src/fujinet/fujinet_config_rom.c b/src/fujinet/fujinet_config_rom.c
 --- a/src/fujinet/fujinet_config_rom.c	1969-12-31 18:00:00.000000000 -0600
-+++ b/src/fujinet/fujinet_config_rom.c	2026-08-19 21:51:46.000000000 -0500
++++ b/src/fujinet/fujinet_config_rom.c	2026-08-20 07:31:59.000000000 -0500
 @@ -0,0 +1,1256 @@
 +/*
 + * ============================================================================
@@ -5068,7 +5079,7 @@ diff --color -ruN -x .git -x .claude -x .gitignore -x README -x '*.o' -x '*.a' -
 +};
 diff --color -ruN -x .git -x .claude -x .gitignore -x README -x '*.o' -x '*.a' -x '*.dll' -x '*.exe' -x '*.rom' -x '*.bin' -x jzintv -x jzintv_batch -x .gitkeep -x README.md -x '*.patch' -x svn_revision.c a/src/fujinet/fujinet_config_rom.h b/src/fujinet/fujinet_config_rom.h
 --- a/src/fujinet/fujinet_config_rom.h	1969-12-31 18:00:00.000000000 -0600
-+++ b/src/fujinet/fujinet_config_rom.h	2026-08-19 21:51:46.000000000 -0500
++++ b/src/fujinet/fujinet_config_rom.h	2026-08-20 07:31:59.000000000 -0500
 @@ -0,0 +1,14 @@
 +/*
 + * ============================================================================
@@ -5086,7 +5097,7 @@ diff --color -ruN -x .git -x .claude -x .gitignore -x README -x '*.o' -x '*.a' -
 +#endif /* FUJINET_CONFIG_ROM_H_ */
 diff --color -ruN -x .git -x .claude -x .gitignore -x README -x '*.o' -x '*.a' -x '*.dll' -x '*.exe' -x '*.rom' -x '*.bin' -x jzintv -x jzintv_batch -x .gitkeep -x README.md -x '*.patch' -x svn_revision.c a/src/fujinet/fujinet.h b/src/fujinet/fujinet.h
 --- a/src/fujinet/fujinet.h	1969-12-31 18:00:00.000000000 -0600
-+++ b/src/fujinet/fujinet.h	2026-08-20 07:14:17.171394755 -0500
++++ b/src/fujinet/fujinet.h	2026-08-20 07:31:59.000000000 -0500
 @@ -0,0 +1,207 @@
 +/*
 + * ============================================================================
@@ -5297,7 +5308,7 @@ diff --color -ruN -x .git -x .claude -x .gitignore -x README -x '*.o' -x '*.a' -
 +/* ======================================================================== */
 diff --color -ruN -x .git -x .claude -x .gitignore -x README -x '*.o' -x '*.a' -x '*.dll' -x '*.exe' -x '*.rom' -x '*.bin' -x jzintv -x jzintv_batch -x .gitkeep -x README.md -x '*.patch' -x svn_revision.c a/src/fujinet/mkconfigrom.py b/src/fujinet/mkconfigrom.py
 --- a/src/fujinet/mkconfigrom.py	1969-12-31 18:00:00.000000000 -0600
-+++ b/src/fujinet/mkconfigrom.py	2026-08-19 21:51:46.000000000 -0500
++++ b/src/fujinet/mkconfigrom.py	2026-08-20 07:31:59.000000000 -0500
 @@ -0,0 +1,113 @@
 +#!/usr/bin/env python3
 +"""mkconfigrom.py -- pack fujinet-config/intv/config.rom into a C source
@@ -5414,7 +5425,7 @@ diff --color -ruN -x .git -x .claude -x .gitignore -x README -x '*.o' -x '*.a' -
 +    sys.exit(main())
 diff --color -ruN -x .git -x .claude -x .gitignore -x README -x '*.o' -x '*.a' -x '*.dll' -x '*.exe' -x '*.rom' -x '*.bin' -x jzintv -x jzintv_batch -x .gitkeep -x README.md -x '*.patch' -x svn_revision.c a/src/fujinet/subMakefile b/src/fujinet/subMakefile
 --- a/src/fujinet/subMakefile	1969-12-31 18:00:00.000000000 -0600
-+++ b/src/fujinet/subMakefile	2026-08-19 21:51:46.000000000 -0500
++++ b/src/fujinet/subMakefile	2026-08-20 07:31:59.000000000 -0500
 @@ -0,0 +1,31 @@
 +##############################################################################
 +## subMakefile for FujiNet mailbox peripheral
@@ -5449,7 +5460,7 @@ diff --color -ruN -x .git -x .claude -x .gitignore -x README -x '*.o' -x '*.a' -
 +	    fujinet/fujinet_config_rom.c fujinet/fujinet_config_rom.h
 diff --color -ruN -x .git -x .claude -x .gitignore -x README -x '*.o' -x '*.a' -x '*.dll' -x '*.exe' -x '*.rom' -x '*.bin' -x jzintv -x jzintv_batch -x .gitkeep -x README.md -x '*.patch' -x svn_revision.c a/src/icart/icart.c b/src/icart/icart.c
 --- a/src/icart/icart.c	2026-08-19 21:32:24.574740258 -0500
-+++ b/src/icart/icart.c	2026-08-19 21:51:46.000000000 -0500
++++ b/src/icart/icart.c	2026-08-20 07:31:59.000000000 -0500
 @@ -201,25 +201,35 @@
  }
  
@@ -5627,7 +5638,7 @@ diff --color -ruN -x .git -x .claude -x .gitignore -x README -x '*.o' -x '*.a' -
  /*  the Free Software Foundation; either version 2 of the License, or       */
 diff --color -ruN -x .git -x .claude -x .gitignore -x README -x '*.o' -x '*.a' -x '*.dll' -x '*.exe' -x '*.rom' -x '*.bin' -x jzintv -x jzintv_batch -x .gitkeep -x README.md -x '*.patch' -x svn_revision.c a/src/icart/icart.h b/src/icart/icart.h
 --- a/src/icart/icart.h	2026-08-19 21:32:24.574786458 -0500
-+++ b/src/icart/icart.h	2026-08-19 21:51:46.000000000 -0500
++++ b/src/icart/icart.h	2026-08-20 07:31:59.000000000 -0500
 @@ -138,6 +138,18 @@
  );
  
@@ -5676,7 +5687,7 @@ diff --color -ruN -x .git -x .claude -x .gitignore -x README -x '*.o' -x '*.a' -
  /*  This program is free software; you can redistribute it and/or modify    */
 diff --color -ruN -x .git -x .claude -x .gitignore -x README -x '*.o' -x '*.a' -x '*.dll' -x '*.exe' -x '*.rom' -x '*.bin' -x jzintv -x jzintv_batch -x .gitkeep -x README.md -x '*.patch' -x svn_revision.c a/src/jzintv.c b/src/jzintv.c
 --- a/src/jzintv.c	2026-08-19 21:32:24.574836655 -0500
-+++ b/src/jzintv.c	2026-08-19 21:51:46.000000000 -0500
++++ b/src/jzintv.c	2026-08-20 07:31:59.000000000 -0500
 @@ -38,6 +38,7 @@
  #include "event/event.h"
  #include "ivoice/ivoice.h"
@@ -5687,7 +5698,7 @@ diff --color -ruN -x .git -x .claude -x .gitignore -x README -x '*.o' -x '*.a' -
  #include "cfg/mapping.h"
 diff --color -ruN -x .git -x .claude -x .gitignore -x README -x '*.o' -x '*.a' -x '*.dll' -x '*.exe' -x '*.rom' -x '*.bin' -x jzintv -x jzintv_batch -x .gitkeep -x README.md -x '*.patch' -x svn_revision.c a/src/jzintv_em.c b/src/jzintv_em.c
 --- a/src/jzintv_em.c	2026-08-19 21:32:24.574885800 -0500
-+++ b/src/jzintv_em.c	2026-08-19 21:51:46.000000000 -0500
++++ b/src/jzintv_em.c	2026-08-20 07:31:59.000000000 -0500
 @@ -35,6 +35,7 @@
  #include "event/event.h"
  #include "ivoice/ivoice.h"
@@ -5698,7 +5709,7 @@ diff --color -ruN -x .git -x .claude -x .gitignore -x README -x '*.o' -x '*.a' -
  #include "cfg/mapping.h"
 diff --color -ruN -x .git -x .claude -x .gitignore -x README -x '*.o' -x '*.a' -x '*.dll' -x '*.exe' -x '*.rom' -x '*.bin' -x jzintv -x jzintv_batch -x .gitkeep -x README.md -x '*.patch' -x svn_revision.c a/src/Makefile.common b/src/Makefile.common
 --- a/src/Makefile.common	2026-08-19 21:32:24.574912791 -0500
-+++ b/src/Makefile.common	2026-08-19 21:51:46.000000000 -0500
++++ b/src/Makefile.common	2026-08-20 07:31:59.000000000 -0500
 @@ -57,6 +57,7 @@
   include name/subMakefile       # Name database
   include serializer/subMakefile # Serializer (save/load)
@@ -5709,7 +5720,7 @@ diff --color -ruN -x .git -x .claude -x .gitignore -x README -x '*.o' -x '*.a' -
   include zlib/subMakefile       # deflate compression for AVI support
 diff --color -ruN -x .git -x .claude -x .gitignore -x README -x '*.o' -x '*.a' -x '*.dll' -x '*.exe' -x '*.rom' -x '*.bin' -x jzintv -x jzintv_batch -x .gitkeep -x README.md -x '*.patch' -x svn_revision.c a/src/Makefile.emscripten_sdl1 b/src/Makefile.emscripten_sdl1
 --- a/src/Makefile.emscripten_sdl1	2026-08-19 21:32:24.574933273 -0500
-+++ b/src/Makefile.emscripten_sdl1	2026-08-19 21:51:46.000000000 -0500
++++ b/src/Makefile.emscripten_sdl1	2026-08-20 07:31:59.000000000 -0500
 @@ -109,5 +109,6 @@
  jzintv_em.$(O): bincfg/legacy.h bincfg/bincfg.h pads/pads_intv2pc.h
  jzintv_em.$(O): demo/demo.h cfg/cfg.h cfg/mapping.h misc/jzprint.h avi/avi.h
@@ -5719,7 +5730,7 @@ diff --color -ruN -x .git -x .claude -x .gitignore -x README -x '*.o' -x '*.a' -
  
 diff --color -ruN -x .git -x .claude -x .gitignore -x README -x '*.o' -x '*.a' -x '*.dll' -x '*.exe' -x '*.rom' -x '*.bin' -x jzintv -x jzintv_batch -x .gitkeep -x README.md -x '*.patch' -x svn_revision.c a/src/Makefile.emscripten_sdl2 b/src/Makefile.emscripten_sdl2
 --- a/src/Makefile.emscripten_sdl2	2026-08-19 21:32:24.574950909 -0500
-+++ b/src/Makefile.emscripten_sdl2	2026-08-19 21:51:46.000000000 -0500
++++ b/src/Makefile.emscripten_sdl2	2026-08-20 07:31:59.000000000 -0500
 @@ -109,5 +109,6 @@
  jzintv_em.$(O): bincfg/legacy.h bincfg/bincfg.h pads/pads_intv2pc.h
  jzintv_em.$(O): demo/demo.h cfg/cfg.h cfg/mapping.h misc/jzprint.h avi/avi.h
@@ -5729,7 +5740,7 @@ diff --color -ruN -x .git -x .claude -x .gitignore -x README -x '*.o' -x '*.a' -
  
 diff --color -ruN -x .git -x .claude -x .gitignore -x README -x '*.o' -x '*.a' -x '*.dll' -x '*.exe' -x '*.rom' -x '*.bin' -x jzintv -x jzintv_batch -x .gitkeep -x README.md -x '*.patch' -x svn_revision.c a/src/periph/periph.c b/src/periph/periph.c
 --- a/src/periph/periph.c	2026-08-19 21:32:24.574987415 -0500
-+++ b/src/periph/periph.c	2026-08-19 21:51:46.000000000 -0500
++++ b/src/periph/periph.c	2026-08-20 07:31:59.000000000 -0500
 @@ -308,6 +308,47 @@
              addr_lo & bus->addr_mask, addr_hi & bus->addr_mask);
  }
@@ -5780,7 +5791,7 @@ diff --color -ruN -x .git -x .claude -x .gitignore -x README -x '*.o' -x '*.a' -
   * ============================================================================
 diff --color -ruN -x .git -x .claude -x .gitignore -x README -x '*.o' -x '*.a' -x '*.dll' -x '*.exe' -x '*.rom' -x '*.bin' -x jzintv -x jzintv_batch -x .gitkeep -x README.md -x '*.patch' -x svn_revision.c a/src/periph/periph.h b/src/periph/periph.h
 --- a/src/periph/periph.h	2026-08-19 21:32:24.575025303 -0500
-+++ b/src/periph/periph.h	2026-08-19 21:51:46.000000000 -0500
++++ b/src/periph/periph.h	2026-08-20 07:31:59.000000000 -0500
 @@ -159,6 +159,28 @@
  );
  
@@ -5812,7 +5823,7 @@ diff --color -ruN -x .git -x .claude -x .gitignore -x README -x '*.o' -x '*.a' -
  /* ======================================================================== */
 diff --color -ruN -x .git -x .claude -x .gitignore -x README -x '*.o' -x '*.a' -x '*.dll' -x '*.exe' -x '*.rom' -x '*.bin' -x jzintv -x jzintv_batch -x .gitkeep -x README.md -x '*.patch' -x svn_revision.c a/src/plat/plat_lib.c b/src/plat/plat_lib.c
 --- a/src/plat/plat_lib.c	2026-08-19 21:32:24.575053646 -0500
-+++ b/src/plat/plat_lib.c	2026-08-19 21:51:46.000000000 -0500
++++ b/src/plat/plat_lib.c	2026-08-20 07:31:59.000000000 -0500
 @@ -18,7 +18,7 @@
  #include "plat/plat_lib_config.h"
  

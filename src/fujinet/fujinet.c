@@ -48,6 +48,17 @@
 #  include <sys/types.h>
 #endif
 
+/*  <winsock2.h> -- pulled in by fn_sock.h on Win32, several includes up --  */
+/*  defines s_addr as a macro for struct in_addr's S_un.S_addr.  bincfg.h's  */
+/*  bc_memspan_t has a field of the same name, which fujinet_apply_bincfg()  */
+/*  reads when it scans a pushed cart's spans for the mailbox window, so on  */
+/*  Windows that read expanded to span->S_un.S_addr and the build failed     */
+/*  there and only there.  Nothing in this file does socket work -- that is  */
+/*  fn_sock.c's job, and it needs the macro -- so drop it here.              */
+#ifdef s_addr
+#  undef s_addr
+#endif
+
 /* Approximate CP-1610 clock rate that periph->now counts in (see
  * PERIPH_HZ() in periph/periph.h -- NTSC main clock / 4).  Used only to
  * convert the millisecond timeouts/backoffs from fuji_mailbox_service() and
