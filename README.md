@@ -5,10 +5,16 @@ This is a fork of Joe Zbiciak's [jzIntv](http://spatula-city.org/~im14u2c/intv/)
 added support for the [FujiNet](https://fujinet.online/) network-attached
 storage/multi-peripheral for the Intellivision.
 
-It is based on the upstream 2020-07-12 (SVN r2110) source release; see
-`ReleaseNotes_20200712.txt` and the earlier `ReleaseNotes_*.txt` files for
+It is based on the upstream 2020-08-22 (SVN r2141) source release; see
+`ReleaseNotes_20200822.txt` and the earlier `ReleaseNotes_*.txt` files for
 that release's history, and `ReleaseNotes_FujiNet.txt` for what this fork
 adds on top of it.
+
+The fork also carries a community patch series by deck
+<jenergy@tiscali.it>, kept in `patches/` -- upstream bug fixes,
+TutorVision EXEC/GROM auto-selection, an `--aspect-4-3` option, the
+`build.sh` build front-end, and an Intellivision Sprint cross-build
+target.  See `patches/README.md`.
 
 ## What's added: FujiNet support
 
@@ -79,12 +85,36 @@ directory browsing, etc. -- works inside the emulator.
 ## Building
 
 ```sh
+./build.sh                # everything your toolchain can manage
+./build.sh linux          # native build        -> bin/linux/jzintv
+./build.sh linux-armhf    # armv7 cross-build   -> bin/linux-armhf/jzintv
+./build.sh windows        # MinGW-w64 cross     -> bin/windows/jzintv.exe
+./build.sh sprint         # Intellivision Sprint -> bin/sprint/update.zip
+```
+
+`build.sh linux` needs a C/C++ toolchain and the SDL2 development package
+(`libsdl2-dev` on Debian/Ubuntu, `SDL2-devel` on Fedora, `sdl2` on Arch).
+`linux-armhf` additionally needs `crossbuild-essential-armhf` and
+`libsdl2-dev:armhf`.  Run `./build.sh --help` for the environment
+variables it honours.
+
+The upstream per-platform Makefiles still work if you prefer them:
+
+```sh
 cd src
-make -f Makefile.<platform>     # e.g. Makefile.linux, Makefile.macosx
+make -f Makefile.<platform>     # e.g. Makefile.linux_sdl2, Makefile.osx_sdl2
 ```
 
 See `doc/` for the full upstream build and usage documentation, and run
 `jzintv --help` for the complete list of command-line options.
+
+### Prebuilt binaries
+
+GitHub Actions builds Linux x86-64, ARM64 and armv7 on every push; the
+binaries are attached to each workflow run as artifacts, and tagged
+releases carry `.tar.gz` bundles for all three.  They link against the
+system SDL2, so install your distribution's SDL2 runtime
+(`libsdl2-2.0-0` on Debian/Ubuntu) before running one.
 
 ## Game Binaries / BIOS Images
 
