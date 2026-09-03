@@ -298,7 +298,7 @@ int decode_timer_table(uint32_t addr)
     if (!no_default_symbols)
         maybe_defsym(".TIMER", addr);
 
-    for (; GET_WORD(addr) != 0; addr += 4)
+    for (; GET_DWORD(addr) != 0; addr += 4)
     {
         changed += mark_interp(addr, FLAG_DBDATA, 4, "Timer dispatch/interval");
         for (i = 0; i < 4; i++)
@@ -324,6 +324,13 @@ int mark_cart_header_pre(void)
     int addr, i;
     int changed = 0;
     int after_title_addr = 0;
+
+    if (IS_EMPTY(0x5000)) {
+        /* There is no cartridge header.
+         * We are probably diassembling the EXEC or some such.
+         */
+        return 0;
+    }
 
     /* -------------------------------------------------------------------- */
     /*  First, prep the header to be marked as 'data' of various sorts.     */
@@ -461,6 +468,13 @@ int decode_gfx_list(uint32_t addr)
 int mark_cart_header_post(void)
 {
     int changed = 0;
+
+    if (IS_EMPTY(0x5000) || IS_EMPTY(0x5006)) {
+        /* There is no cartridge header.
+         * We are probably diassembling the EXEC or some such.
+         */
+        return 0;
+    }
 
     changed += decode_gfx_list(GET_DWORD(0x5006));
 

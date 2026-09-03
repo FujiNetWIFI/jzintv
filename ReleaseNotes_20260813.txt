@@ -1,0 +1,109 @@
+Release notes for 2026-08-13   (custom build)
+Updates since 2020-08-22.  See ReleaseNotes_20200822.txt for earlier updates.
+
+Custom build of jzIntv based on the 2020-08-22 release, with the community
+"best" bug-fix tree and the TutorVision auto-select EXEC/GROM patch applied,
+plus the additions below.  jzIntv is (c) Joe Zbiciak; the changes described
+here are downstream additions and are not an official jzIntv release.
+
+
+---------------
+ New features:
+---------------
+
+*   jzIntv
+    *   Save / load machine state (single slot):
+        *   SAVE and LOAD are now bindable events.  SAVE is a twin of DUMP
+            (it writes the state); LOAD restores it.
+        *   Default keyboard bindings:  F2 = SAVE, F3 = LOAD.  (Keymap
+            switching stays on F5/F6/F7.)
+        *   Hackfiles can also bind them to controller combos, e.g.
+            Select + Button1 = SAVE, Select + Button2 = LOAD.
+        *   The saved state covers the CP1600, the STIC (including its
+            frame-timing anchors), the interrupt/bus request queue, ECS ROM
+            paging, and the Intellivoice (SP0256) speech state.  On load, all
+            absolute cycle timestamps are rebased onto the current timeline,
+            so there is no post-load freeze or audio/input desync -- both
+            in-session and across a fresh process.
+        *   The save file is named by the ROM's CRC32 (its content, not its
+            file name): renaming or moving-in-place a ROM keeps its save, and
+            different games in the same folder never overwrite each other.
+            Location, in priority order:
+                1.  $JZINTV_SAVESTATE   (explicit full path)
+                2.  $JZINTV_SAVEDIR/<crc32>.sav
+                3.  <ROM's directory>/<crc32>.sav
+
+    *   New  --aspect-4-3  option:  force a true 4:3 picture in fullscreen on
+        16:9 displays by pillarboxing the image (black bars left and right).
+
+    *   TutorVision support (from the merged patch):  --tv / --sptv /
+        --gramsize, with automatic selection of the TutorVision EXEC/GROM.
+
+
+----------
+ Changes:
+----------
+
+*   Build:
+    *   New  build.sh  convenience script that builds the Linux, Windows and
+        Sprint executables into  bin/<platform>/  (release, stripped, LTO).
+        It prefers the system SDL2 (sdl2-config / pkg-config), cross-compiles
+        Windows with MinGW-w64, and cross-compiles the ARM "Sprint" target
+        with the arm-linux-gnueabihf toolchain.  Targets whose toolchain is
+        absent are skipped rather than failing the whole build.
+    *   New  package-release.sh  script that zips the redistributable (the
+        git-tracked GPL source plus the built binaries) into a single archive,
+        excluding the vendored build-support/ and any copyrighted material.
+    *   New Sprint target (Intellivision Sprint, ARM 32-bit armhf) with
+        Makefile.sprint.  It packages the ARM jzintv into an  update.zip  by
+        swapping the emulator inside a base update package.
+
+
+-------------------------
+ Cleanups and bug fixes:
+-------------------------
+
+*   Makefile.sprint:  define  -DUSE_SDL=2  (not  -DUSE_SDL2 ), so sdl_jzintv.h
+    actually includes the SDL2 headers and the ARM target compiles, matching
+    the Linux and Windows Makefiles.
+
+
+-----------------------
+ Building from source:
+-----------------------
+
+Use the build.sh script at the top of the tree:
+
+    ./build.sh [linux|windows|sprint|all]        (default: all)
+
+Outputs go to bin/<platform>/  :  bin/linux/jzintv, bin/windows/jzintv.exe,
+bin/sprint/jzintv (+ update.zip).  Builds are release, stripped, LTO.  In
+"all", a target whose toolchain is missing is skipped, not fatal.
+
+What each target needs:
+
+*   linux    -- a C compiler and the SDL2 development package
+                (libsdl2-dev / SDL2-devel / sdl2).  On a system that ships
+                SDL2 at runtime but not its headers, drop the SDL2 headers
+                into build-support/sdl2-linux-headers/ instead.
+
+*   windows  -- the MinGW-w64 cross-compiler (x86_64-w64-mingw32-gcc/g++) plus
+                the SDL2-MinGW development package.  The latter is taken from
+                $SDL2_MINGW_PREFIX, or build-support/sdl2-mingw/, or is auto-
+                downloaded from libsdl.org (needs curl or wget).
+
+*   sprint   -- the ARM cross-compiler (arm-linux-gnueabihf-gcc/g++, e.g. from
+                crossbuild-essential-armhf) with libsdl2-dev:armhf, plus zip.
+                On distros without armhf, build it inside a Debian container.
+                update.zip is assembled from a base template resolved from
+                $SPRINT_ZIP_TEMPLATE, build-support/sprint/, or ../sprint/.
+                NOTE: that template holds copyrighted BIOS + game ROMs and is
+                NOT redistributable -- supply your own official update.zip.
+
+The build-support/ directory (vendored SDL2 dev files + the Sprint template)
+is OPTIONAL: build.sh prefers system packages and only falls back to it.  If
+a required piece is missing, build.sh stops with a clear message telling you
+which package to install or which variable to set -- it never fails silently.
+
+Environment knobs:  CC, CXX, MINGW, ARM_CROSS, SDL2_VERSION, SDL2_MINGW_PREFIX,
+SPRINT_ZIP_TEMPLATE, STRIP, JOBS.  See the header of build.sh for details.

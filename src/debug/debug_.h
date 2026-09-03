@@ -30,7 +30,7 @@ typedef struct debug_t
     periph_t        periph;         /*  Debugger looks like a peripheral.   */
     int             show_rd;        /*  FLAG: show reads being performed.   */
     int             show_wr;        /*  FLAG: show writes being performed.  */
-    int             show_ins;       /*  FLAG: show instructions / regs .    */
+    int             show_ins;       /*  FLAG: show instructions / regs.     */
     struct cp1600_t *cp1600;        /*  Pointer to actual CPU.              */
     struct speed_t  *speed;         /*  Rate control (needed for resync)    */
     struct gfx_t    *gfx;           /*  So we can toggle windowed mode.     */

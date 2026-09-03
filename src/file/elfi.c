@@ -62,14 +62,14 @@ int elfi_init(const char *elfi_prefix)
     elfi_fname     = (char *)malloc(strlen(elfi_prefix) + MAX_ELFI_FNAME + 2);
     elfi_fname_end = elfi_fname + prefix_len;
 
-    memcpy(elfi_fname, elfi_prefix, prefix_len);
-    *elfi_fname_end++ = PATH_SEP;
-
     if (!elfi_fname)
     {
         fprintf(stderr, "elfi:  Out of memory\n");
         return -1;
     }
+
+    memcpy(elfi_fname, elfi_prefix, prefix_len);
+    *elfi_fname_end++ = PATH_SEP;
 
     for (i = 0; i < MAX_ELFI_FD; i++)
         fd_map[i] = 0;

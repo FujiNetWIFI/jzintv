@@ -221,20 +221,88 @@
 #define host_to_le_32(x) le_to_host_32(x)
 #define host_to_be_32(x) be_to_host_32(x)
 
+/* ======================================================================== */
+/*  Target sub-types.                                                       */
+/* ======================================================================== */
+#define PLAT_MACOS_CLASSIC  (-1)    /* MacOS Classic... unsupported.        */
+#define PLAT_MACOS_OSX      (1)     /* Will this change when ARM arrives?   */
+
+#define PLAT_LINUX_DEFAULT  (1)
+#define PLAT_LINUX_TERMUX   (2)
+#define PLAT_LINUX_GP2X     (3)
+
+#define PLAT_WIN32_MINGW    (1)     /* Or other compilers that like MinGW.  */
+#define PLAT_WIN32_MSVC     (2)
 
 /* ======================================================================== */
-/*  Target-specific library compatibility issues                            */
+/*  Target platform detection.                                              */
 /* ======================================================================== */
+#define PLAT_AMIGAOS4   (0)
+#define PLAT_EMSCRIPTEN (0)
+#define PLAT_FREEBSD    (0)
+#define PLAT_LINUX      (0)
+#define PLAT_MACOS      (0)
+#define PLAT_SOLARIS    (0)
+#define PLAT_WII        (0)
+#define PLAT_WIN32      (0)
+#define PLAT_GENERIC    (0)
 
-#if defined(__APPLE__) && defined(__MACH__)
-# define PLAT_MACOS
-#endif
+#if defined(__AMIGAOS4__)
+# undef PLAT_AMIGAOS4
+# define PLAT_AMIGAOS4 (1)
 
-#if defined(__linux__) && !defined(PLAT_LINUX)
-# define PLAT_LINUX
-#endif
+#elif defined(__EMSCRIPTEN__)
+# undef PLAT_EMSCRIPTEN
+# define PLAT_EMSCRIPTEN (1)
 
-#ifdef PLAT_LINUX
+#elif defined(__FreeBSD__)
+# undef PLAT_FREEBSD
+# define PLAT_FREEBSD (1)
+
+#elif defined(__linux__)
+# undef PLAT_LINUX
+# if defined(__TERMUX__)
+#  define PLAT_LINUX PLAT_LINUX_TERMUX
+# elif defined(GP2X)
+#  define PLAT_LINUX PLAT_LINUX_GP2X
+# else
+#  define PLAT_LINUX PLAT_LINUX_DEFAULT
+# endif
+
+#elif defined(macintosh)
+# undef PLAT_MACOS
+# define PLAT_MACOS PLAT_MACOS_CLASSIC
+# error "MacOS Classic not currently supported."
+
+#elif defined(__APPLE__) && defined(__MACH__)
+# undef PLAT_MACOS
+# define PLAT_MACOS PLAT_MACOS_OSX
+
+#elif defined(SOLARIS)
+# undef PLAT_SOLARIS
+# define PLAT_SOLARIS (1)
+
+#elif defined(WII)
+# undef PLAT_WII
+# define PLAT_WII (1)
+
+#elif defined(WIN32) || defined(_WIN32)
+# undef PLAT_WIN32
+# ifdef _MSC_VER
+#  define PLAT_WIN32 PLAT_WIN32_MSVC
+# else
+#  define PLAT_WIN32 PLAT_WIN32_MINGW
+# endif
+
+#else
+# undef PLAT_GENERIC
+# define PLAT_GENERIC (1)
+#endif  /* Platform determination */
+
+/* ======================================================================== */
+/*  Target-specific defaults and compatibility flags.                       */
+/* ======================================================================== */
+#if PLAT_LINUX
 # define USE_STRCASECMP
 # define DEFAULT_ROM_PATH ".:=../rom:/usr/local/share/jzintv/rom"
 # define HAS_LINK
@@ -247,20 +315,18 @@
 # define CAN_TIOCGWINSZ
 # define CAN_SIGWINCH
 # define USE_TERMIO
+# define USE_SYS_IOCTL
+# if PLAT_LINUX == PLAT_LINUX_GP2X
+#  define FULLSC_START_DLY   (0)
+#  define SMALLMEM
+# endif
+# if PLAT_LINUX == PLAT_LINUX_TERMUX
+#  undef DEFAULT_ROM_PATH  /* TODO: Fix DEFAULT_ROM_PATH */
+#  define DEFAULT_ROM_PATH ".:=../rom:/usr/local/share/jzintv/rom"
+# endif
 #endif
 
-#ifdef __TERMUX__
-# define USE_STRCASECMP
-/* TODO: Fix DEFAULT_ROM_PATH */
-# define DEFAULT_ROM_PATH ".:=../rom:/usr/local/share/jzintv/rom"
-# define HAS_LINK
-# define DEFAULT_AUDIO_HZ     (48000)
-# define SND_BUF_SIZE_DEFAULT (2048)
-# define SND_BUF_CNT_DEFAULT  (3)
-# define NO_SETUID
-#endif
-
-#ifdef SOLARIS
+#if PLAT_SOLARIS
 /*# define NO_SNPRINTF*/
 # define NO_GETOPT_LONG
 # define NO_INOUT
@@ -273,7 +339,7 @@
 # define CAN_SIGWINCH
 #endif
 
-#ifdef WIN32
+#if PLAT_WIN32
 # define NO_CLOCK_GETTIME
 # define NO_GETTIMEOFDAY
 /*# define NO_SNPRINTF*/
@@ -298,7 +364,7 @@
 #  define U64_FMT "I64u"
 #  define X64_FMT "I64x"
 # endif
-# ifndef _MSC_VER
+# if PLAT_WIN32 != PLAT_WIN32_MSVC
 #  define USE_STRCASECMP
 #  define NEED_INOUT INOUT_GCC
 # else
@@ -314,7 +380,7 @@
 # endif
 #endif
 
-#ifdef PLAT_MACOS
+#if PLAT_MACOS
 # define NO_RAND48
 # define NO_INOUT
 # define NO_GETOPT_LONG
@@ -331,7 +397,7 @@
 # define USE_SYS_IOCTL
 #endif
 
-#ifdef __FreeBSD__
+#if PLAT_FREEBSD
 # define NO_INOUT
 # define USE_STRCASECMP
 # define DEFAULT_ROM_PATH ".:=../rom:/usr/local/share/jzintv/rom"
@@ -344,36 +410,7 @@
 # define USE_SYS_IOCTL
 #endif
 
-#ifdef _TMS320C6X
-# define NO_CLOCK_GETTIME
-# define NO_GETTIMEOFDAY
-# define NO_STRDUP
-# define NO_SYS_TIME_H
-# define NO_UNISTD_H
-# define NO_GETOPT_LONG
-# define NO_SETUID
-# define NO_NANOSLEEP
-# define NO_USLEEP
-# define NO_RAND48
-# define NO_INOUT
-# define NO_STRICMP
-# define HAVE_RESTRICT
-# define NO_FCNTL
-# ifndef CLK_TCK
-#  define CLK_TCK 200000000 /* Assume 200MHz C6201 device */
-# endif
-# define DEFAULT_ROM_PATH "."
-# define FULLSC_START_DLY   (0)
-# define NO_SETUID
-# define NO_GETCWD
-#endif
-
-#ifdef GP2X
-# define FULLSC_START_DLY   (0)
-# define SMALLMEM
-#endif
-
-#ifdef __AMIGAOS4__
+#if PLAT_AMIGAOS
 # define NO_GETOPT_LONG
 # define NO_SETUID
 # define PATH_SEP '/'
@@ -382,7 +419,7 @@
 # define NO_GETCWD
 #endif
 
-#ifdef WII
+#if PLAT_WII
 # define NO_ACCESS
 # define NO_GETOPT_LONG
 # define NO_CLOCK_GETTIME
@@ -401,7 +438,7 @@
 # define NO_GETCWD
 #endif
 
-#ifdef __EMSCRIPTEN__
+#if PLAT_EMSCRIPTEN
 # define USE_STRCASECMP
 # define NO_FCNTL
 # define NO_SETUID
@@ -422,7 +459,7 @@
 /*  certain functions.  This is mainly a win in the scaler.                 */
 /* ======================================================================== */
 
-#if !defined(PLAT_MACOS) && !defined(__MINGW32__) && \
+#if !PLAT_MACOS && !defined(__MINGW32__) && \
     ((__GNUC__+0 == 4 && __GNUC_MINOR__+0 >= 8) || (__GNUC__+0 > 4))
 /* For now, just do this on x86. */
 # if (defined(i386)    || defined(__i386)     || defined(__i386__)    || \
@@ -505,9 +542,18 @@
 # define NEED_INOUT INOUT_NONE
 #endif
 
+#if !defined(PROC_SELF_EXE)
+# define PROC_SELF_EXE NULL
+#endif
+
 #define INOUT_NONE 0
 #define INOUT_GCC  1
 #define INOUT_MSVC 2
+
+#if !defined(USE_SDL)
+# define USE_SDL (0)
+#endif
+
 
 /*
  * ============================================================================
@@ -515,12 +561,12 @@
  * ============================================================================
  */
 
-#if defined(WIN32)
+#if PLAT_WIN32
 # define CGC_SUPPORTED
 # define CGC_DLL
 #endif
 
-#if defined(PLAT_MACOS) || defined(PLAT_LINUX)
+#if PLAT_MACOS || PLAT_LINUX
 #define CGC_SUPPORTED
 #define CGC_THREAD
 #endif

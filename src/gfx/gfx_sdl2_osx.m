@@ -10,10 +10,13 @@
 /* ======================================================================== */
 #include <Metal/Metal.h>
 #include <QuartzCore/CAMetalLayer.h>
-#include "gfx/gfx_sdl2_osx.h"
+#include "gfx/gfx_sdl2_hooks.h"
 
-bool gfx_set_srgb_colorspace(void *layer_vp)
+bool gfx_set_srgb_colorspace_metal(void *layer_vp)
 {
+    if (!layer_vp)
+        return false;
+
     CAMetalLayer *layer = (CAMetalLayer *)layer_vp;
     if (layer.colorspace == nil)
     {

@@ -30,8 +30,11 @@ SLFLAGS = $(LFLAGS)
 #    SDL's lib/{x86,x64}/SDL.dll into ../bin (e.g., ../bin/SDL.dll exists)
 #    Use the x86 flavor to build 32-bit binaries, x64 for 64-bit.
 
-SDL1_CFLAGS=
+SDL1_CFLAGS= -DUSE_SDL=1
 SDL1_LFLAGS= $(L)/SDL.lib
+
+SDL1_CFLAGS += $(SDL1_CFLAGS_EXTRA)
+SDL1_LFLAGS += $(SDL1_LFLAGS_EXTRA)
 
 WARN = -D_CRT_SECURE_NO_WARNINGS -D_CRT_NONSTDC_NO_WARNINGS
 WARNXX = $(WARN)

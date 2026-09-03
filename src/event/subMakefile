@@ -14,7 +14,7 @@ event/event_null.$(O): $(EVENT_TBL_INC) event/event_plat.h
 event/event_null.$(O): config.h event/subMakefile
 
 event/event_sdl.$(O): $(EVENT_TBL_INC) event/event_plat.h event/event_sdl_pvt.h
-event/event_sdl.$(O): joy/joy.h joy/joy_sdl.h mouse/mouse.h
+event/event_sdl.$(O): joy/joy.h joy/joy_sdl.h mouse/mouse.h plat/plat.h
 event/event_sdl.$(O): config.h sdl_jzintv.h event/subMakefile
 
 event/event_sdl1.$(O): $(EVENT_TBL_INC) event/event_plat.h event/event_sdl_pvt.h

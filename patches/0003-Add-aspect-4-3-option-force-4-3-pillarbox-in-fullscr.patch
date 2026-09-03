@@ -1,0 +1,137 @@
+From e9dfbbf887217f71bad9cbff5f64e8d86dd6dbfe Mon Sep 17 00:00:00 2001
+From: deck <jenergy@tiscali.it>
+Date: Tue, 11 Aug 2026 18:57:56 +0200
+Subject: [PATCH 3/7] Add --aspect-4-3 option: force 4:3 pillarbox in
+ fullscreen
+
+gfx/gfx_sdl2.c: new global gfx_force_4_3; in gfx_flip() compress the image
+to 3/4 output width and center it (so after the 16:9 panel stretch the
+picture is a true 4:3), with black pillarbox bars.
+cfg/cfg.c: register the --aspect-4-3 long option (FLAG_GFX_ASPECT_4_3).
+cfg/usage.c: document it in --help.
+---
+ src/cfg/cfg.c      | 12 +++++++++++-
+ src/cfg/usage.c    |  1 +
+ src/gfx/gfx_sdl2.c | 33 +++++++++++++++++++++++++++++++--
+ 3 files changed, 43 insertions(+), 3 deletions(-)
+
+diff --git a/src/cfg/cfg.c b/src/cfg/cfg.c
+index 02e9b20..69ba8d2 100644
+--- a/src/cfg/cfg.c
++++ b/src/cfg/cfg.c
+@@ -357,6 +357,9 @@ LOCAL const char *cfg_parseres(const char *const res,
+ /* ======================================================================== */
+ /*  CFG_LONGOPT  -- Long options for getopt_long                            */
+ /* ======================================================================== */
++/*  Defined in gfx/gfx_sdl2.c: when nonzero, force 4:3 pillarboxing.        */
++extern int gfx_force_4_3;
++
+ enum
+ {
+     FLAG_CGC0 = 2000,   FLAG_CGC1,         FLAG_KBDHACKFILE,  FLAG_GP2X_CLOCK,
+@@ -372,7 +375,8 @@ enum
+     FLAG_CHEAT15, FLAG_CHEAT16, FLAG_CHEAT17, FLAG_CHEAT18, FLAG_CHEAT19,
+     FLAG_CHEAT20, FLAG_CHEAT21, FLAG_CHEAT22, FLAG_CHEAT23, FLAG_CHEAT24,
+     FLAG_CHEAT25, FLAG_CHEAT26, FLAG_CHEAT27, FLAG_CHEAT28, FLAG_CHEAT29,
+-    FLAG_CHEAT30, FLAG_CHEAT31
++    FLAG_CHEAT30, FLAG_CHEAT31,
++    FLAG_GFX_ASPECT_4_3
+ };
+ 
+ struct option cfg_longopt[] =
+@@ -469,6 +473,8 @@ struct option cfg_longopt[] =
+     {   "gfx-border-x", 1,      NULL,       FLAG_GFX_BORD_X     },
+     {   "gfx-border-y", 1,      NULL,       FLAG_GFX_BORD_Y     },
+ 
++    {   "aspect-4-3",   0,      NULL,       FLAG_GFX_ASPECT_4_3 },
++
+     {   "gui-mode",     0,      NULL,       FLAG_GUI_MODE       },
+ 
+     {   "rom-path",     1,      NULL,       'p'                 },
+@@ -801,6 +807,10 @@ void cfg_init(cfg_t *cfg, int argc, char * argv_orig[])
+                 CHG_BIT(cfg->gfx_flags, GFX_DRCMRG, value);       
+                 break;
+ 
++            case FLAG_GFX_ASPECT_4_3:
++                gfx_force_4_3 = 1;
++                break;
++
+             case FLAG_GFX_VERBOSE:
+                 gfx_verbose = 1;                                  
+                 break;
+diff --git a/src/cfg/usage.c b/src/cfg/usage.c
+index 7e9edb1..0583e52 100644
+--- a/src/cfg/usage.c
++++ b/src/cfg/usage.c
+@@ -98,6 +98,7 @@ void usage(void)
+                                                                             "\n"
+ "            --gfx-border-x=#      Directly set horizontal border padding." "\n"
+ "            --gfx-border-y=#      Directly set vertical border padding."   "\n"
++"            --aspect-4-3          Force 4:3 aspect ratio (pillar/letterbox)""\n"
+                                                                             "\n"
+ "            --resolution=<res>    Synonym for --displaysize"               "\n"
+ "    -f# -x# --fullscreen=#        Full screen display:"                    "\n"
+diff --git a/src/gfx/gfx_sdl2.c b/src/gfx/gfx_sdl2.c
+index 4121793..d2d8760 100644
+--- a/src/gfx/gfx_sdl2.c
++++ b/src/gfx/gfx_sdl2.c
+@@ -36,6 +36,11 @@
+ 
+ const double frame_delta = 0.0166;  /* Slightly faster than 60Hz.           */
+ 
++/*  When nonzero, gfx_flip() pill/letter-boxes the image to a 4:3 aspect     */
++/*  ratio before presenting.  Set via the --aspect-4-3 command-line option   */
++/*  (see cfg/cfg.c).                                                         */
++int gfx_force_4_3 = 0;
++
+ /*
+  * ============================================================================
+  *  GFX_PVT_T        -- Private internal state to gfx_t structure.
+@@ -500,18 +505,42 @@ LOCAL int gfx_flip(const gfx_t *const gfx)
+     SDL_Renderer *const rend = pvt->rend;
+     SDL_Texture *const text = pvt->text;
+     const SDL_Color bord_color = pvt->pal_on[gfx->b_color];
+-    const SDL_Rect dest = {
++    SDL_Rect dest = {
+         .x = pvt->ofs_x, .y = pvt->ofs_y,
+         .w = pvt->scaler.actual_x, .h = pvt->scaler.actual_y
+     };
+ 
++    /* -------------------------------------------------------------------- */
++    /*  4:3 enforcement.  The target display is 16:9, and the framebuffer    */
++    /*  is stretched to fill it, so a full-width image looks horizontally    */
++    /*  stretched.  Compress the image to 3/4 of the output width (the ratio */
++    /*  (4:3) / (16:9) = 3/4) and center it: after the display's 16:9        */
++    /*  stretch the visible picture is a correct 4:3, with pillarbox bars    */
++    /*  in the border color.  This holds for any -z framebuffer size.        */
++    /* -------------------------------------------------------------------- */
++    if (gfx_force_4_3)
++    {
++        int ow = pvt->dim_x, oh = pvt->dim_y;
++        SDL_GetRendererOutputSize(rend, &ow, &oh);
++        const int tw = (ow * 3) / 4;
++        dest.x = (ow - tw) / 2;
++        dest.y = 0;
++        dest.w = tw;
++        dest.h = oh;
++    }
++
+     /* -------------------------------------------------------------------- */
+     /*  The docs for SDL_RenderPresent indicate that the back-buffer        */
+     /*  contents may not be preserved between calls to Present.  Thus, we   */
+     /*  need to clear the backdrop to our border color before copying the   */
+     /*  texture to the display.                                             */
+     /* -------------------------------------------------------------------- */
+-    SDL_SetRenderDrawColor(rend, bord_color.r, bord_color.g, bord_color.b, 255);
++    /*  With 4:3 enforcement the cleared area becomes the side (pillarbox)   */
++    /*  bars, which we want black rather than the game's border color.       */
++    if (gfx_force_4_3)
++        SDL_SetRenderDrawColor(rend, 0, 0, 0, 255);
++    else
++        SDL_SetRenderDrawColor(rend, bord_color.r, bord_color.g, bord_color.b, 255);
+     SDL_RenderClear(rend);
+     if (pvt->vid_enable || gfx->debug_blank)
+         SDL_RenderCopy(rend, text, NULL,
+-- 
+2.47.1
+

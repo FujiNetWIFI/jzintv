@@ -39,8 +39,11 @@ ENABLE_CGC ?= 1
 GNU_READLINE ?= 1
 
 # Get SDL2 related build flags.
-SDL2_CFLAGS := $(shell sdl2-config --cflags) -DUSE_SDL2
+SDL2_CFLAGS := $(shell sdl2-config --cflags) -DUSE_SDL=2
 SDL2_LFLAGS := $(shell sdl2-config --static-libs || sdl2-config --libs)
+
+SDL2_CFLAGS += $(SDL2_CFLAGS_EXTRA)
+SDL2_LFLAGS += $(SDL2_LFLAGS_EXTRA)
 
 # Override these in a .mak file. See buidlcfg/00-compiler*.txt for examples.
 #

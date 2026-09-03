@@ -29,12 +29,12 @@ int pad_cgc_init
 )
 {
 
-#ifdef WIN32
+#if PLAT_WIN32
     UNUSED(cgc_dev);
     return pad_cgc_win32_init(pad, addr, cgc_num);
 #endif
 
-#if defined(PLAT_LINUX) || defined(PLAT_MACOS)
+#if PLAT_LINUX || PLAT_MACOS
     UNUSED(cgc_num);
     return pad_cgc_linux_init(pad, addr, cgc_dev);
 #endif
@@ -46,7 +46,7 @@ int pad_cgc_init
 #endif
 }
 
-#if defined(PLAT_LINUX) || defined(PLAT_MACOS)
+#if PLAT_LINUX || PLAT_MACOS
 /* Weak version, to allow omitting the CGC support from SDL-less builds more
    easily on Linux / Mac. */
 int __attribute__((weak))pad_cgc_linux_init

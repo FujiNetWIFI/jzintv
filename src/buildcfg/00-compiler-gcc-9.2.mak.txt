@@ -2,6 +2,8 @@
 ## GCC 9.2.0 configuration.
 ## This should work for newer versions as well. Just change the CC/CXX flags.
 ##############################################################################
+ifneq ($(HAVE_00_COMPILER),1)
+HAVE_00_COMPILER := 1
 
 # Compile with "LTO=" to make a one-off compile w/out link time optimization.
 LTO ?= -flto=auto -ffat-lto-objects
@@ -61,3 +63,5 @@ WARNXX += -Wold-style-cast
 
 # Only used on MacOS.
 MACOS_VERSION_MIN = 10.6.0
+
+endif

@@ -6,6 +6,8 @@
 ##
 ## If the -std flags below don't work, try -std=c99 and std=c++1y instead.
 ##############################################################################
+ifneq ($(HAVE_00_COMPILER),1)
+HAVE_00_COMPILER := 1
 
 # Compile with "LTO=" to make a one-off compile w/out link time optimization.
 LTO ?= -flto
@@ -67,3 +69,5 @@ WARNXX += -Werror
 
 # Only used on MacOS.
 MACOS_VERSION_MIN = 10.6.0
+
+endif

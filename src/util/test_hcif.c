@@ -20,9 +20,7 @@
  * ===========================================================================
  */
 
-
-#if (!defined(PLAT_LINUX) && !defined(WIN32)) || !defined(i386)
-
+#if (!PLAT_LINUX && !PLAT_WIN32) || !defined(i386)
 #include <stdio.h>
 
 /*

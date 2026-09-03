@@ -81,6 +81,8 @@ typedef struct cfg_t
     int         psg_window;     /* Window size for PSG sliding window       */
     int         ecs_enable;     /* ECS enable/disable flag.                 */
     int         ivc_enable;     /* Ivoice enable/disable flag.              */
+    int         tv_enable;      /* TutorVision enable/disable flag          */
+    int         sptv_enable;    /* Super Pro Tutor enable/disable flag      */
     int         ivc_window;     /* Window size for Ivoice sliding window.   */
     char       *ivc_tname;      /* Intellivoice sample file name template.  */
     int         gfx_flags;      /* SDL mode flags (fullsc/windowed, etc)    */
@@ -113,7 +115,7 @@ typedef struct cfg_t
     uint32_t  do_dump;          /* Signal that we'd like to save a game     */
     uint32_t  do_load;          /* Signal that we'd like to load a game     */
     uint32_t  do_reload;        /* Signal we'd like to reload jzIntv        */
-    uint32_t  chg_evt_map;      /* Change the current input event map.      */
+    uint32_t  do_evt_map_chgd;  /* Signal that active event map changed.    */
 
     /* -------------------------------------------------------------------- */
     /*  Key bindings                                                        */

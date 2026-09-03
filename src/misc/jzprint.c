@@ -12,6 +12,7 @@ int    jzp_silent = 0;
 FILE  *jzp_stdout = NULL;
 int  (*jzp_vprintf)(void *arg, const char *fmt, va_list ap) = NULL;
 void  *jzp_vprintf_arg = NULL;
+bool   jzp_printed = false;     /* Used by readline to know to refresh. */
 
 LOCAL int jzp_printf_impl(const char *fmt, va_list ap)
 {
@@ -21,7 +22,10 @@ LOCAL int jzp_printf_impl(const char *fmt, va_list ap)
         return strlen(fmt); /* non-zero and plausible */
 
     if (jzp_stdout)
+    {
+        jzp_printed = true;
         retval = vfprintf(jzp_stdout, fmt, ap);
+    }
 
     if (jzp_vprintf)
         retval = jzp_vprintf(jzp_vprintf_arg, fmt, ap);

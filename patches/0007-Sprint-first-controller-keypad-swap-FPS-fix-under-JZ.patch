@@ -1,0 +1,224 @@
+From 2d0cf1a24681167eacb0832fd69f5ef7e6c5c225 Mon Sep 17 00:00:00 2001
+From: deck <jenergy@tiscali.it>
+Date: Sun, 16 Aug 2026 19:14:35 +0200
+Subject: [PATCH 2/2] Sprint: first-controller keypad swap + FPS fix (under
+ JZINTV_SPRINT)
+
+Two more Sprint-only features, both gated directly by JZINTV_SPRINT (no
+extra feature macro; only the in-game menu keeps its own ADD_JZINTV_MENU).
+
+First-controller keypad swap (cfg/mapping.c): the Sprint's first (left)
+hand controller has its keypad top/bottom rows wired swapped, so 1/2/3
+act as 7/8/9 and vice versa (4/5/6 unchanged). Swap the WHOLE binding --
+storage slot AND emitted hardware code -- between KP1<->KP7, KP2<->KP8,
+KP3<->KP9 for PD0L. Swapping the slot as well as the code keeps the
+emulated machine and the in-game menu in agreement (the menu resolves a
+keypad digit from the bound slot, so a code-only swap fixes games but
+leaves the menu inverted). Done at the mapping level, so it covers any
+input source (keyboard and USB pad via hackfile). First controller only.
+
+FPS fix (gfx/gfx_sdl2.c): pin the software scaler to native 160x200, use
+a fixed 1280x720 window, and let the SDL2 hardware renderer do the
+upscale in gfx_flip -- moving the stretch off the ARM CPU to hold 60 FPS.
+The render dest {160,0,960,720} is a 4:3 pillarbox, so a Sprint build is
+forced 4:3 for free; --aspect-4-3 now only applies to the non-Sprint
+builds, which are unchanged (gfx_flip alternates: JZINTV_SPRINT -> FPS
+fix, else -> the --aspect-4-3 path). Wide mode via border_x==40; -v crops
+overscan.
+
+Update ReleaseNotes_20260816.txt. build.sh is intentionally untouched.
+---
+ ReleaseNotes_20260816.txt | 39 ++++++++++++++++++++++++---
+ src/cfg/mapping.c         | 22 +++++++++++++++
+ src/gfx/gfx_sdl2.c        | 56 +++++++++++++++++++++++++++++++++++++++
+ 3 files changed, 113 insertions(+), 4 deletions(-)
+
+diff --git a/ReleaseNotes_20260816.txt b/ReleaseNotes_20260816.txt
+index e4e1be8..3061e80 100644
+--- a/ReleaseNotes_20260816.txt
++++ b/ReleaseNotes_20260816.txt
+@@ -2,10 +2,41 @@ Release notes for 2026-08-16   (custom build)
+ Updates since 2026-08-13.  See ReleaseNotes_20260813.txt for earlier updates.
+ 
+ Custom build of jzIntv based on the 2020-08-22 release (see the earlier notes
+-for the full lineage).  This update is internal plumbing only: it changes how
+-the Sprint-only features are gated at compile time.  There is no change to the
+-Linux or Windows builds, and no change to what a Sprint build actually does --
+-the resulting Sprint binary is byte-for-byte equivalent in behaviour.
++for the full lineage).  This update reworks how the Sprint-only features are
++gated at compile time, and adds two more Sprint-only features (a first-
++controller keypad swap and the FPS fix).  The Linux and Windows builds are
++unaffected.
++
++
++---------------
++ New features:
++---------------
++
++*   Sprint (Intellivision Sprint target only, -DJZINTV_SPRINT):
++
++    *   First-controller keypad swap.  On the Sprint the first (left) hand
++        controller has its keypad top and bottom rows wired swapped: 1/2/3 act
++        as 7/8/9 and vice versa (the middle row 4/5/6 is unchanged).  The build
++        now swaps those keypad bindings for PD0L so the emulated machine sees
++        the correct keys.  It is done at the machine-mapping level
++        (cfg/mapping.c), so it applies to every input source (keyboard and USB
++        pad via hackfile), not just the keyboard keypad.  The WHOLE binding is
++        swapped (storage slot AND hardware code) between 1<->7, 2<->8, 3<->9,
++        which keeps the emulated machine and the in-game menu in agreement --
++        the menu resolves a keypad digit from the bound slot, so swapping the
++        code alone would fix games but leave the menu inverted.  Affects the
++        first controller only.
++
++    *   FPS fix (forced for a Sprint build).  The software scaler is pinned to
++        the native 160x200 (it now only does color mapping), a fixed 1280x720
++        window is used, and the SDL2 hardware renderer performs the upscale in
++        gfx_flip.  This moves the stretch off the ARM CPU, which the software
++        scaler was pinning, and restores a steady 60 FPS.  Because the render
++        destination {160,0,960,720} is a 4:3 picture pillarboxed in the 1280x720
++        window, the Sprint build gets a forced 4:3 for free -- the --aspect-4-3
++        option is now only wired for the non-Sprint builds, which are left
++        exactly as before.  A wide mode (full 1280) is available to the
++        frontend via border_x==40, and -v (verbose) crops the overscan border.
+ 
+ 
+ ----------
+diff --git a/src/cfg/mapping.c b/src/cfg/mapping.c
+index 06a03d3..d976406 100644
+--- a/src/cfg/mapping.c
++++ b/src/cfg/mapping.c
+@@ -183,6 +183,27 @@ cfg_evtact_t  cfg_event_action[] =
+     /* -------------------------------------------------------------------- */
+     /*  PAD0: Left-hand controller keypad                                   */
+     /* -------------------------------------------------------------------- */
++#ifdef JZINTV_SPRINT
++    /* -------------------------------------------------------------------- */
++    /*  Sprint: the first (left) hand controller is wired with its keypad     */
++    /*  top and bottom rows swapped -- 1/2/3 act as 7/8/9 and vice versa      */
++    /*  (middle row 4/5/6 unchanged).  We swap the WHOLE binding (storage      */
++    /*  slot AND emitted hardware code) between KP1<->KP7, KP2<->KP8,          */
++    /*  KP3<->KP9 for PD0L.  Swapping the slot as well as the code is what     */
++    /*  keeps the emulated machine AND the in-game menu in agreement: the      */
++    /*  menu resolves a keypad digit from the bound slot, so a code-only swap  */
++    /*  would fix games but leave the menu inverted.  PD0L only (controller 1).*/
++    /* -------------------------------------------------------------------- */
++    { "PD0L_KP1",   W(pad0.l[7]         ),  { 0,    ~0U  }, { 0,    0x84 } },
++    { "PD0L_KP2",   W(pad0.l[8]         ),  { 0,    ~0U  }, { 0,    0x44 } },
++    { "PD0L_KP3",   W(pad0.l[9]         ),  { 0,    ~0U  }, { 0,    0x24 } },
++    { "PD0L_KP4",   W(pad0.l[4]         ),  { 0,    ~0U  }, { 0,    0x82 } },
++    { "PD0L_KP5",   W(pad0.l[5]         ),  { 0,    ~0U  }, { 0,    0x42 } },
++    { "PD0L_KP6",   W(pad0.l[6]         ),  { 0,    ~0U  }, { 0,    0x22 } },
++    { "PD0L_KP7",   W(pad0.l[1]         ),  { 0,    ~0U  }, { 0,    0x81 } },
++    { "PD0L_KP8",   W(pad0.l[2]         ),  { 0,    ~0U  }, { 0,    0x41 } },
++    { "PD0L_KP9",   W(pad0.l[3]         ),  { 0,    ~0U  }, { 0,    0x21 } },
++#else
+     { "PD0L_KP1",   W(pad0.l[1]         ),  { 0,    ~0U  }, { 0,    0x81 } },
+     { "PD0L_KP2",   W(pad0.l[2]         ),  { 0,    ~0U  }, { 0,    0x41 } },
+     { "PD0L_KP3",   W(pad0.l[3]         ),  { 0,    ~0U  }, { 0,    0x21 } },
+@@ -192,6 +213,7 @@ cfg_evtact_t  cfg_event_action[] =
+     { "PD0L_KP7",   W(pad0.l[7]         ),  { 0,    ~0U  }, { 0,    0x84 } },
+     { "PD0L_KP8",   W(pad0.l[8]         ),  { 0,    ~0U  }, { 0,    0x44 } },
+     { "PD0L_KP9",   W(pad0.l[9]         ),  { 0,    ~0U  }, { 0,    0x24 } },
++#endif
+     { "PD0L_KPC",   W(pad0.l[10]        ),  { 0,    ~0U  }, { 0,    0x88 } },
+     { "PD0L_KP0",   W(pad0.l[0]         ),  { 0,    ~0U  }, { 0,    0x48 } },
+     { "PD0L_KPE",   W(pad0.l[11]        ),  { 0,    ~0U  }, { 0,    0x28 } },
+diff --git a/src/gfx/gfx_sdl2.c b/src/gfx/gfx_sdl2.c
+index dbf9193..3eb6719 100644
+--- a/src/gfx/gfx_sdl2.c
++++ b/src/gfx/gfx_sdl2.c
+@@ -215,8 +215,18 @@ LOCAL int gfx_setup_sdl_display
+     const int text_y = gfx->pvt->scaler.actual_y;
+ 
+     /* Our desired window size / physical display mode.                     */
++#ifdef JZINTV_SPRINT
++    /* Sprint FPS fix: fixed 1280x720 window.  The software scaler stays at   */
++    /* native 160x200 (see the scaler config in gfx_init) and the SDL2        */
++    /* hardware renderer performs the upscale in gfx_flip, so the ARM CPU     */
++    /* isn't pinned doing a software stretch.                                 */
++    const int tgt_wind_x = 1280;
++    const int tgt_wind_y = 720;
++    (void)bord_x; (void)bord_y;
++#else
+     const int tgt_wind_x = text_x + bord_x;
+     const int tgt_wind_y = text_y + bord_y;
++#endif
+     //const unsigned tgt_wind_bpp = gfx->pvt->scaler.bpp;
+     const unsigned tgt_wind_bpp = 32;  /* For now, force to 32bpp. */
+ 
+@@ -568,12 +578,49 @@ int gfx_check(int desire_x, int desire_y, int desire_bpp, int prescaler)
+ /* ======================================================================== */
+ /*  GFX_FLIP         -- Copy the texture to the display.                    */
+ /* ======================================================================== */
++#ifdef JZINTV_SPRINT
++/*  Sprint FPS fix: when set, gfx_flip crops the overscan border off the      */
++/*  native texture before the hardware upscale.  Enabled when -v (verbose).   */
++int black_borders = 0;
++#endif
++
+ LOCAL int gfx_flip(const gfx_t *const gfx)
+ {
+     const gfx_pvt_t *const pvt = gfx->pvt;
+     SDL_Renderer *const rend = pvt->rend;
+     SDL_Texture *const text = pvt->text;
+     const SDL_Color bord_color = pvt->pal_on[gfx->b_color];
++
++#ifdef JZINTV_SPRINT
++    /* -------------------------------------------------------------------- */
++    /*  Sprint FPS fix (forced for a Sprint build).  The software scaler is   */
++    /*  pinned to native 160x200 (see gfx_init), so here we hand the native   */
++    /*  texture to the SDL2 hardware renderer and let IT upscale -- this      */
++    /*  keeps the ARM CPU off the stretch and holds 60 FPS.  The destination  */
++    /*  {160,0,960,720} is a 4:3 picture pillarboxed in the fixed 1280x720    */
++    /*  window, so the Sprint build gets a forced 4:3 for free (the           */
++    /*  --aspect-4-3 option, below, is only for the non-Sprint builds).  A    */
++    /*  wide mode (full 1280) is selected by the frontend via border_x==40.   */
++    /* -------------------------------------------------------------------- */
++    SDL_Rect dest   = { 160, 0, 960, 720 };
++    SDL_Rect source = {   0, 0, 160, 200 };
++    if (pvt->border_x == 40)          /* wide mode set by the frontend        */
++    {
++        dest.x = 0;
++        dest.w = 1280;
++    }
++    if (black_borders)                /* crop overscan (enabled when verbose) */
++    {
++        SDL_SetRenderDrawColor(rend, 0, 0, 0, 255);
++        source.w = 159; source.y = 4; source.h = 192;
++    }
++    else
++        SDL_SetRenderDrawColor(rend, bord_color.r, bord_color.g, bord_color.b, 255);
++    SDL_RenderClear(rend);
++    if (pvt->vid_enable || gfx->debug_blank)
++        SDL_RenderCopy(rend, text, &source,
++                       gfx->scrshot & GFX_RESET ? NULL : &dest);
++#else
+     SDL_Rect dest = {
+         .x = pvt->ofs_x, .y = pvt->ofs_y,
+         .w = pvt->scaler.actual_x, .h = pvt->scaler.actual_y
+@@ -614,6 +661,7 @@ LOCAL int gfx_flip(const gfx_t *const gfx)
+     if (pvt->vid_enable || gfx->debug_blank)
+         SDL_RenderCopy(rend, text, NULL,
+                        gfx->scrshot & GFX_RESET ? NULL : &dest);
++#endif
+ 
+ #ifdef JZINTV_SPRINT
+ #ifdef ADD_JZINTV_MENU
+@@ -751,6 +799,14 @@ int gfx_init(gfx_t *gfx, int desire_x, int desire_y, int desire_bpp,
+     //if (desire_bpp == 24)
+         desire_bpp = 32;  // TODO: Support other bit-depths someday?
+ 
++#ifdef JZINTV_SPRINT
++    /* Sprint FPS fix: pin the software scaler to native 160x200 (it then only */
++    /* does color mapping, not scaling); the SDL2 hardware renderer performs   */
++    /* the actual upscale in gfx_flip.  This is what keeps the ARM CPU free.   */
++    desire_x = 160; desire_y = 200;
++    if (verbose) black_borders = 1;   /* -v crops the overscan border         */
++#endif
++
+     if (gfx_scale_init_spec(&(gfx->pvt->scaler),
+                              inter_x,  inter_y,
+                              desire_x, desire_y, desire_bpp))
+-- 
+2.47.1
+

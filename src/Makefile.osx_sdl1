@@ -52,9 +52,12 @@ SDL_PORT_SYN_FLAGS := -I$(SDL_FRAMEWORK)/Headers/
 
 # Note: -F$(SDL_FRAMEWORK)/.. ensures that gcc can find the SDL framework even
 # if SDL_FRAMEWORK had to be overrriden.  See above.
-SDL1_CFLAGS := 
+SDL1_CFLAGS := -DUSE_SDL=1
 SDL1_LFLAGS := -F$(SDL_FRAMEWORK)/.. -framework SDL \
                -framework AppKit -framework Foundation -lobjc
+
+SDL1_CFLAGS += $(SDL1_CFLAGS_EXTRA)
+SDL1_LFLAGS += $(SDL1_LFLAGS_EXTRA)
 
 # Override these in a .mak file.  See buildcfg/00-compiler*.txt for examples.
 LTO    ?= -flto

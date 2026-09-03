@@ -17,7 +17,7 @@
 
 #ifdef DIRECT_INTV2PC
 # include <unistd.h>
-# ifndef WIN32
+# if !PLAT_WIN32
 #  include <sys/io.h>
 # endif
 # include "periph/periph.h"
@@ -52,14 +52,14 @@ void plat_delay(unsigned delay)
 
 int plat_init(void)
 {
-#ifdef GP2X
+#if PLAT_LINUX == PLAT_LINUX_GP2X
     setenv("SDL_NOMOUSE", "1", 1);
 #endif
 
     /* -------------------------------------------------------------------- */
     /*  Do a quick endian-check to ensure we were compiled correctly.       */
     /* -------------------------------------------------------------------- */
-#ifndef __EMSCRIPTEN__
+    if (!PLAT_EMSCRIPTEN)
     {
         union { uint8_t byte[4]; uint32_t word; } endian;
 
@@ -88,8 +88,6 @@ int plat_init(void)
         }
 #endif
     }
-#endif
-
 
     /* -------------------------------------------------------------------- */
     /*  Call SDL_Init and ask for Audio and Video.   This call is made      */
@@ -104,35 +102,14 @@ int plat_init(void)
         return -1;
     }
 
-#if 0 && defined(N900)
-    {
-        int haa;
-        if ((haa = HAA_Init(0)) != 0)
-        {
-            fprintf(stderr, "HAA_Init init failed."
-                    "HA! HA! The error code: %d\n", haa);
-            return -1;
-        }
-    }
-#endif
-
     atexit(plat_quit);
 
-#if defined(GP2X)
-    {
-        extern void gp2x_init(void);
-        gp2x_init();
-    }
-#endif
+    /* -------------------------------------------------------------------- */
+    /*  Allow targets to define an external init function in plat.h.        */
+    /* -------------------------------------------------------------------- */
+    plat_extern_init();
 
-#if defined(WII)
-    {
-        extern void wii_init(void);
-        wii_init();
-    }
-#endif
-
-#if defined(DIRECT_INTV2PC) && !defined(WIN32)
+#if defined(DIRECT_INTV2PC) && !PLAT_WIN32
     /* -------------------------------------------------------------------- */
     /*  If direct hand-controller interface support is compiled in, try     */
     /*  to give ourself permission to the printer-port I/O address ranges.  */
@@ -149,7 +126,7 @@ int plat_init(void)
     }
 #endif
 
-#if defined(DIRECT_INTV2PC) && defined(WIN32)
+#if defined(DIRECT_INTV2PC) && PLAT_WIN32
     pads_intv2pc_ports_ok = 7;
 #endif
 
@@ -176,9 +153,6 @@ int plat_init(void)
 
 static void plat_quit(void)
 {
-#ifdef N900
-    //HAA_Quit();
-#endif
     SDL_Quit();
 }
 

@@ -221,7 +221,7 @@ void init_disp_width(int width)
 /*  Weakest implementation:  Just return 80 unless we're told to return     */
 /*  something else.                                                         */
 /* ------------------------------------------------------------------------ */
-#if !defined(HAVE_WIDTH_IMPL) && !defined(WIN32) && !defined(CAN_TIOCGWINSZ)
+#if !defined(HAVE_WIDTH_IMPL) && !PLAT_WIN32 && !defined(CAN_TIOCGWINSZ)
 # define HAVE_WIDTH_IMPL
 LOCAL int disp_width = -1;
 
@@ -245,7 +245,7 @@ void init_disp_width(int width)
 /* ------------------------------------------------------------------------ */
 /*  WIN32 Implementation:  Eventually use "mode con:" to change size.       */
 /* ------------------------------------------------------------------------ */
-#if !defined(HAVE_WIDTH_IMPL) && defined(WIN32)
+#if !defined(HAVE_WIDTH_IMPL) && PLAT_WIN32
 # define HAVE_WIDTH_IMPL
 LOCAL int disp_width = -1;
 

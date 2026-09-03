@@ -6,7 +6,8 @@
 #include "periph/periph.h"
 #include "cp1600/cp1600.h"
 
-#define NUM_CHEATS (8)
+#define NUM_CHEATS (32)
+#define CHEAT_FIRST_AVAIL (-1)
 
 typedef struct cheat_cmd {
     int         cmd;        /* Action to perform.   */
@@ -24,12 +25,19 @@ typedef struct cheat {
 /* ======================================================================== */
 /*  CHEAT_ADD    -- Adds a cheat to cheat_t.                                */
 /* ======================================================================== */
-int cheat_add(cheat_t *const RESTRICT cheat, const char *const s);
+int cheat_add(cheat_t *const RESTRICT cheat, const char *const s,
+              int cheat_idx);
 
 /* ======================================================================== */
-/*  CHEAT_COUNT  -- Returns number of active cheats.                        */
+/*  CHEAT_ACTIVE -- Returns a bitmap of the active cheats.                  */
 /* ======================================================================== */
-int cheat_count(const cheat_t *const cheat);
+uint32_t cheat_active(const cheat_t *const cheat);
+
+/* ======================================================================== */
+/*  CHEAT_FIRST_AVAIL    -- Returns the first available cheat slot.         */
+/*                          Returns -1 if none available.                   */
+/* ======================================================================== */
+int cheat_first_avail(const cheat_t *const cheat);
 
 /* ======================================================================== */
 /*  CHEAT_INIT   -- Initializes the cheat peripheral if it isn't already.   */

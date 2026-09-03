@@ -1,13 +1,12 @@
 ##############################################################################
 ## Termux w/ Clang configuration.
 ##############################################################################
+ifneq ($(HAVE_00_COMPILER),1)
+HAVE_00_COMPILER := 1
 
 # Compile with "LTO=" to make a one-off compile w/out link time optimization.
 LTO ?= -flto
 
-# Clang-specific sanitizer flags.
-# Add USE_SANI=1 to enable a sanitizer build.  Recommend 'make clean' first.
-ifeq ($(USE_SANI),1)
 # Clang-specific sanitizer flags.
 # Add USE_SANI=1 to enable a sanitizer build.  Recommend 'make clean' first.
 ifeq ($(USE_SANI),1)
@@ -136,7 +135,8 @@ WCLANG += -Wundefined-func-template
 WCLANG += -Wundefined-internal-type
 WCLANG += -Wundefined-reinterpret-cast
 WCLANG += -Wunguarded-availability
-WCLANG += -Wunreachable-code-aggressive
+# Disable unreachable-code as it doesn't like if(0) type constructs.
+#WCLANG += -Wunreachable-code-aggressive
 WCLANG += -Wunneeded-member-function
 WCLANG += -Wunused
 WCLANG += -Wused-but-marked-unused
@@ -161,3 +161,5 @@ WARNXX += -Wcast-qual -Wsequence-point -Wstrict-aliasing
 WARNXX += -Wc++11-compat -Wc++14-compat -Wc++1z-compat
 WARNXX += -Werror
 WARNXX += $(WCLANG)
+
+endif

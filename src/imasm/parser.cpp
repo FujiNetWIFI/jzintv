@@ -203,7 +203,7 @@ int Parser::ParseLine(string &sLine)
     // Massacre any comments to keep them from mucking up the works
     string::size_type iPos = sLine.find(";");
     if (iPos != string::npos)
-        sLine.substr(0, iPos);
+        (void)sLine.substr(0, iPos);
 
     // Now, through the magic of operator overloading, tokenize the line.
     lineToks = sLine;

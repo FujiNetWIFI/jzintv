@@ -241,6 +241,8 @@ LOCAL uint32_t stic_ctrl_rd(periph_t *const per, periph_t *const req,
 */
                 stic->debug_flags |= STIC_DBG_CTRL_ACCESS_WINDOW;
             }
+
+            jzp_flush();
         }
 
         return addr < 0x80 ? 0x000E & addr : 0xFFFF;
@@ -434,6 +436,8 @@ LOCAL void stic_ctrl_wr(periph_t *const per, periph_t *const req,
 */
                 stic->debug_flags |= STIC_DBG_CTRL_ACCESS_WINDOW;
             }
+
+            jzp_flush();
         }
         return;
     }

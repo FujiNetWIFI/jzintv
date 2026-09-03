@@ -1120,6 +1120,6 @@ void avi_set_time_scale( const double avi_time_scale_,
     avi_time_scale         = avi_time_scale_ > 0.01 ? avi_time_scale_ : 1.0;
     audio_time_scale       = incoming_audio_time_scale;
     audio_time_scale_ratio = avi_time_scale / incoming_audio_time_scale;
-    printf("AVI: %5.3f %5.3f %5.3f\n", avi_time_scale, audio_time_scale,
-           audio_time_scale_ratio);
+    jzp_printf("AVI: %5.3f %5.3f %5.3f\n", avi_time_scale, audio_time_scale,
+               audio_time_scale_ratio);
 }

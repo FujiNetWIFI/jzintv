@@ -20,8 +20,11 @@ P           = export PATH;
 
 .SUFFIXES: .html
 
-SDL2_CFLAGS := -s USE_SDL=2 -DUSE_SDL2
-SDL2_LFLAGS := -s USE_SDL=2 -DUSE_SDL2
+SDL2_CFLAGS := -s USE_SDL=2 -DUSE_SDL=2
+SDL2_LFLAGS := -s USE_SDL=2 -DUSE_SDL=2
+
+SDL2_CFLAGS += $(SDL2_CFLAGS_EXTRA)
+SDL2_LFLAGS += $(SDL2_LFLAGS_EXTRA)
 
 SVN_REV := $(shell (svn info -R || :) | grep "Last Changed Rev:" | cut -d' ' -f4 | sort -n | tail -1)
 SVN_DTY := $(shell echo $$( (svn status || :) | grep -v '^?' | wc -l ) )

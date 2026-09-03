@@ -7,6 +7,7 @@
 
 #include <stdarg.h>
 
+extern bool   jzp_printed;
 extern int    jzp_silent;
 extern FILE  *jzp_stdout;
 extern int  (*jzp_vprintf)(void *arg, const char *fmt, va_list ap);

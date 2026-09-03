@@ -1,0 +1,13 @@
+# Includes objects required to work around X11-specific issues.
+#
+# The production build omits these by default to avoid adding X11 library
+# dependencies on the release libraries.
+ifneq ($(HAVE_80_X11_WORKAROUNDS),1)
+HAVE_80_X11_WORKAROUNDS := 1
+
+# Don't let SDL2 set windows as transient when we don't want it.
+SDL2_CFLAGS_EXTRA += -DX11_TRANSIENT_WORKAROUND
+SDL2_LFLAGS_EXTRA += -L/usr/X11R6/lib -lXext -lX11
+OBJS_SDL2 += gfx/gfx_sdl2_x11.$(O)
+
+endif

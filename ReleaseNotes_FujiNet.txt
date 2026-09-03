@@ -1,6 +1,42 @@
 Release notes for the FujiNet fork.
-Based on upstream jzIntv 20200712 (SVN r2110).  See ReleaseNotes_20200712.txt
+Based on upstream jzIntv 20200822 (SVN r2141).  See ReleaseNotes_20200822.txt
 and earlier ReleaseNotes_*.txt files for the upstream emulator's history.
+
+------------------------------------------
+ Rebased onto upstream jzIntv 20200822:
+------------------------------------------
+
+The fork now sits on upstream's 2020-08-22 release (SVN r2141) instead of
+2020-07-12 (r2110), and picks up a community patch series by deck
+<jenergy@tiscali.it> on the way.  See patches/README.md for the series and
+for the two patches that are missing from it.
+
+From upstream 20200822: the cheat facility grows from 8 to 32 slots with
+explicit --cheat<#>="..." flags, the PLAT_xxx / USE_SDL={0,1,2} macro
+migration lands, WIN32 becomes _WIN32, the "stuck in Map 3" keyboard-stack
+bug is fixed, and jzIntv returns 0 on a clean exit instead of 1.
+
+From the community patches: --aspect-4-3 forces a 4:3 pillarboxed picture
+in fullscreen, TutorVision EXEC/GROM images are auto-selected, and build.sh
+becomes the front door for building.
+
+None of this reached into src/fujinet/ -- the mailbox peripheral, the
+FujiBus codec and the embedded config ROM carried over untouched.  Only
+cfg/cfg.c needed hand-merging, where the FujiNet flags, --fujinet* options
+and cfg_parse() locals share space with the new cheat slots and with
+--aspect-4-3.
+
+One build fix rode along: config.h now defines USE_SYS_IOCTL for
+PLAT_LINUX.  The fork already swapped <termio.h> for <termios.h> so
+plat_lib.c would compile against modern glibc, but glibc keeps struct
+winsize, TIOCGWINSZ and ioctl() in <sys/ioctl.h>, so get_disp_width()
+still failed to build on glibc 2.30 and newer.  Linux now sets the same
+macro FreeBSD and macOS already used to pull that header in.
+
+New: GitHub Actions builds Linux x86-64, ARM64 and armv7 on every push,
+and attaches release tarballs for all three on a v* tag.  build.sh gained
+a 'linux-armhf' target for a plain armv7 build (as opposed to 'sprint',
+which is the Intellivision Sprint flavour).
 
 -------------------------------------
  Boot progress bar tracks the push:

@@ -1,0 +1,38 @@
+
+ -- NEW:  Add _EXPMAC keyword, to force macros to expand in both the taken and
+    not-taken branches of an IF.  This is needed for IF-statements inside a 
+    RPT block, whose taken/not-taken behavior varies across loop iterations.
+
+ -- NEW:  Increase resolution of release_date to incloude hours, minutes,
+    seconds, and timezone.
+
+ -- NEW:  Add build_date and version CFGVARs.
+     -- build_date takes the same format as release_date.
+     -- version is an arbitrary format string.
+     -- Both tags can appear an arbitrary number of times.
+
+ -- NEW:  Add %z specifier to TODAY_xxx.  
+     -- Reports timezone as +HHMM in TODAY_STR_xxx.
+     -- Reports timezone as minutes relative to UTC in TODAY_VAL_xxx.
+
+ -- NEW: Add _ROTL16, _ROTL32, _ROTR16, _ROTR32 operators.
+     -- Same precedence as SHL, SHR, SHRU.
+
+ -- Internal:  Increase IF-ELSE-ENDI stack depth from 32 to 256.
+
+ -- Internal:  Additional infrastructure for normalizing metadata between
+    different object file types.
+
+ -- BUGFIX:  Add missing __FEATURE.TODAY for the TODAY_xxx feature.
+    This was supposed to be in the last release, but a fatfingered edit
+    fail deleted it.
+
+ -- BUGFIX:  Fix some nested RPT cases.
+     -- Multiple RPTs inside a nested RPT now work.
+     -- RPT guarded by an IF also now works.
+
+ -- BUGFIX:  Fix some metadata tag behavior when loading ROMs w/ tags.
+
+ -- Misc:  Start marking stuff 2018.
+
+ -- Misc:  Update documentation for new features.

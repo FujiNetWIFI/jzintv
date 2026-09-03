@@ -559,6 +559,16 @@ LOCAL const char *snd_fmt_name(uint16_t fmt)
         :  fmt == AUDIO_S16LSB  ? "Signed 16-bit (LSB first)"
         :  fmt == AUDIO_S16MSB  ? "Signed 16-bit (MSB first)"
         :  fmt == AUDIO_S16     ? "Signed 16-bit (LSB first?)"
+#if USE_SDL == 2
+        :  fmt == AUDIO_S32SYS  ? "Signed 32-bit (native)"
+        :  fmt == AUDIO_S32LSB  ? "Signed 32-bit (LSB first)"
+        :  fmt == AUDIO_S32MSB  ? "Signed 32-bit (MSB first)"
+        :  fmt == AUDIO_S32     ? "Signed 32-bit (?SB first)"
+        :  fmt == AUDIO_F32SYS  ? "Float 32-bit (native)"
+        :  fmt == AUDIO_F32LSB  ? "Float 32-bit (LSB first)"
+        :  fmt == AUDIO_F32MSB  ? "Float 32-bit (MSB first)"
+        :  fmt == AUDIO_F32     ? "Float 32-bit (?SB first)"
+#endif
         :                         "Unknown";
 }
 

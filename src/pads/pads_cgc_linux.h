@@ -12,7 +12,7 @@
 
 #ifndef PAD_CGC_LINUX_H_
 # define PAD_CGC_LINUX_H_
-# if defined(PLAT_LINUX) || defined(PLAT_MACOS)
+# if PLAT_LINUX || PLAT_MACOS
 
 /* ======================================================================== */
 /*  PAD_CGC_INIT -- Initializes a Classic Gaming Controller interface.      */

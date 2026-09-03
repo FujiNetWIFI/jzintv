@@ -169,8 +169,8 @@ enum readacts
 extern enum readacts nextreadact;
 
 
-#ifndef macintosh
-#include <stdlib.h>
+#if PLAT_MACOS != PLAT_MACOS_CLASSIC
+# include <stdlib.h>
 #endif
 
 extern struct symel * endsymbol;

@@ -66,6 +66,8 @@ void usage(void)
                                                                             "\n"
 "Intellivision Hardware Flags:"                                             "\n"
 "    -s#     --ecs=#               ECS.           0: Disable, 1: Enable"    "\n"
+"    -t#     --tv=#                TutorVision.   0: Disable, 1: Enable"    "\n"
+"    -u#     --sptv=#              SuperProTutor. 0: Disable, 1: Enable"    "\n"
 "    -v#     --voice=#             Intellivoice.  0: Disable, 1: Enable"    "\n"
 "    -W#     --voicewindow=#       Sets averaging window for voice filter." "\n"
 "    -Vname  --voicefiles=name     Saves voice WAV files to name####.wav."  "\n"
@@ -73,8 +75,7 @@ void usage(void)
                                                                             "\n"
 "Video and Sound Flags:"                                                    "\n"
     );
-#ifndef GP2X
-    jzp_printf(
+    if (PLAT_LINUX != PLAT_LINUX_GP2X) jzp_printf(
 "    -z<res> --displaysize=<res>   Desired active display size, *before*"   "\n"
 "                                  adding border area."                     "\n"
 "                                  <res> can be a string of the form"       "\n"
@@ -97,6 +98,7 @@ void usage(void)
                                                                             "\n"
 "            --gfx-border-x=#      Directly set horizontal border padding." "\n"
 "            --gfx-border-y=#      Directly set vertical border padding."   "\n"
+"            --aspect-4-3          Force 4:3 aspect ratio (pillar/letterbox)""\n"
                                                                             "\n"
 "            --resolution=<res>    Synonym for --displaysize"               "\n"
 "    -f# -x# --fullscreen=#        Full screen display:"                    "\n"
@@ -106,7 +108,6 @@ void usage(void)
 "                                  \"--prescale=-1\" to print a list of the\n"
 "                                  supported prescalers."                   "\n"
     );
-#endif
     jzp_printf(
 "            --gfx-palette=<file>  Load alternate palette from <file>"      "\n"
 "    -G#     --gramsize=#          Change number of GRAM tiles"             "\n"
@@ -275,7 +276,8 @@ void usage(void)
 "                                  dirs specified by --rom-path before"     "\n"
 "                                  dirs specified by JZINTV_ROM_PATH."      "\n"
                                                                             "\n"
-#ifdef GP2X
+    );
+    if (PLAT_LINUX == PLAT_LINUX_GP2X) jzp_printf(
 "GP2X specific flags"                                                       "\n"
 "            --gp2xclock=#         Set clock rate in MHz.  Default:  200MHz.\n"
 "                                  0 means \"do not change current rate.\"" "\n"
@@ -289,7 +291,8 @@ void usage(void)
 "                                  5: 4-dir, UD/LR bias"                    "\n"
 "                                  6: 4-dir, diagonal bias"                 "\n"
                                                                             "\n"
-#endif
+    );
+    jzp_printf(
 "Legal note:"                                                               "\n"
 "    Intellivision(TM) is a trademark of Intellivision Entertainment.  Neither"
                                                                             "\n"

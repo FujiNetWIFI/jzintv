@@ -359,6 +359,9 @@ LOCAL const char *cfg_parseres(const char *const res,
 /* ======================================================================== */
 /*  CFG_LONGOPT  -- Long options for getopt_long                            */
 /* ======================================================================== */
+/*  Defined in gfx/gfx_sdl2.c: when nonzero, force 4:3 pillarboxing.        */
+extern int gfx_force_4_3;
+
 enum
 {
     FLAG_CGC0 = 2000,   FLAG_CGC1,         FLAG_KBDHACKFILE,  FLAG_GP2X_CLOCK,
@@ -368,6 +371,14 @@ enum
     FLAG_START_DELAY,   FLAG_DBG_SCRIPT,   FLAG_DBG_SRCMAP,   FLAG_FILE_IO,
     FLAG_ENABLE_MOUSE,  FLAG_PRESCALE,     FLAG_JLP_SAVEGAME, FLAG_AVI_RATE,
     FLAG_LOCUTUS,       FLAG_ECS_TAPE,     FLAG_ECS_PRINTER,  FLAG_CHEAT,
+    FLAG_CHEAT0,  FLAG_CHEAT1,  FLAG_CHEAT2,  FLAG_CHEAT3,  FLAG_CHEAT4,
+    FLAG_CHEAT5,  FLAG_CHEAT6,  FLAG_CHEAT7,  FLAG_CHEAT8,  FLAG_CHEAT9,
+    FLAG_CHEAT10, FLAG_CHEAT11, FLAG_CHEAT12, FLAG_CHEAT13, FLAG_CHEAT14,
+    FLAG_CHEAT15, FLAG_CHEAT16, FLAG_CHEAT17, FLAG_CHEAT18, FLAG_CHEAT19,
+    FLAG_CHEAT20, FLAG_CHEAT21, FLAG_CHEAT22, FLAG_CHEAT23, FLAG_CHEAT24,
+    FLAG_CHEAT25, FLAG_CHEAT26, FLAG_CHEAT27, FLAG_CHEAT28, FLAG_CHEAT29,
+    FLAG_CHEAT30, FLAG_CHEAT31,
+    FLAG_GFX_ASPECT_4_3,
     FLAG_FUJINET,       FLAG_FUJINET_DEBUG,FLAG_FUJINET_BOOTDUMP,
     FLAG_FUJINET_BOOTDIR
 };
@@ -379,6 +390,8 @@ struct option cfg_longopt[] =
     {   "gromimg",      1,      NULL,       'g'                 },
     {   "gramsize",     1,      NULL,       'G'                 },
     {   "ecs",          2,      NULL,       's'                 },
+    {   "tv",           2,      NULL,       't'                 },
+    {   "sptv",         2,      NULL,       'u'                 },
     {   "fullscreen",   2,      NULL,       'f'                 },
     {   "audiofile",    1,      NULL,       'F'                 },
     {   "debugger",     0,      NULL,       'd'                 },
@@ -444,7 +457,7 @@ struct option cfg_longopt[] =
     JS_FLAG(8),
     JS_FLAG(9),
 
-#ifdef GP2X
+#if PLAT_LINUX == PLAT_LINUX_GP2X
     {   "gp2xclock",    1,      NULL,       FLAG_GP2X_CLOCK     },
 #endif
 
@@ -463,6 +476,8 @@ struct option cfg_longopt[] =
     {   "gfx-border-pct", 1,    NULL,       'b'                 },
     {   "gfx-border-x", 1,      NULL,       FLAG_GFX_BORD_X     },
     {   "gfx-border-y", 1,      NULL,       FLAG_GFX_BORD_Y     },
+
+    {   "aspect-4-3",   0,      NULL,       FLAG_GFX_ASPECT_4_3 },
 
     {   "gui-mode",     0,      NULL,       FLAG_GUI_MODE       },
 
@@ -493,6 +508,22 @@ struct option cfg_longopt[] =
     {   "ecs-printer",  1,      NULL,       FLAG_ECS_PRINTER    },
     {   "cheat",        1,      NULL,       FLAG_CHEAT          },
 
+#define CH_FLAG(c) \
+    {   "cheat" #c "0", 1,      NULL,       FLAG_CHEAT##c##0    }, \
+    {   "cheat" #c "1", 1,      NULL,       FLAG_CHEAT##c##1    }, \
+    {   "cheat" #c "2", 1,      NULL,       FLAG_CHEAT##c##2    }, \
+    {   "cheat" #c "3", 1,      NULL,       FLAG_CHEAT##c##3    }, \
+    {   "cheat" #c "4", 1,      NULL,       FLAG_CHEAT##c##4    }, \
+    {   "cheat" #c "5", 1,      NULL,       FLAG_CHEAT##c##5    }, \
+    {   "cheat" #c "6", 1,      NULL,       FLAG_CHEAT##c##6    }, \
+    {   "cheat" #c "7", 1,      NULL,       FLAG_CHEAT##c##7    }, \
+    {   "cheat" #c "8", 1,      NULL,       FLAG_CHEAT##c##8    }, \
+    {   "cheat" #c "9", 1,      NULL,       FLAG_CHEAT##c##9    }
+
+    CH_FLAG(), CH_FLAG(1), CH_FLAG(2),
+    {   "cheat30",      1,      NULL,       FLAG_CHEAT30        },
+    {   "cheat31",      1,      NULL,       FLAG_CHEAT31        },
+
     {   "fujinet",      2,      NULL,       FLAG_FUJINET        },
     {   "fujinet-debug",0,      NULL,       FLAG_FUJINET_DEBUG  },
     {   "fujinet-bootdump", 1,  NULL,       FLAG_FUJINET_BOOTDUMP },
@@ -501,7 +532,7 @@ struct option cfg_longopt[] =
     {   NULL,           0,      NULL,       0                   }
 };
 
-LOCAL const char *optchars= "b:E:e:G:g:s::f::F:?dhlqr:P::x::z:a:w:B:C:M:m:"
+LOCAL const char *optchars= "b:E:e:G:g:s::t::u::f::F:?dhlqr:P::x::z:a:w:B:C:M:m:"
                             "v::W::V::i::I::c:D:p:J:j::";
 
 /* ======================================================================== */
@@ -510,6 +541,7 @@ LOCAL const char *optchars= "b:E:e:G:g:s::f::F:?dhlqr:P::x::z:a:w:B:C:M:m:"
 const uint32_t i2pc_ports[4] = { 0x0, 0x378, 0x278, 0x3BC };
 
 LOCAL char *joy_cfg[MAX_JOY][MAX_STICKS];
+
 
 /* ======================================================================== */
 /*  CFG_INIT     -- Parse command line and get started                      */
@@ -532,31 +564,36 @@ void cfg_init(cfg_t *cfg, int argc, char * argv_orig[])
     int jlp_flash = -1;
     LZFILE *f;
     int silent = 0;
-    char *debug_symtbl   = NULL;
-    char *debug_script   = NULL;
-    char *debug_srcmap   = NULL;
-    int snd_buf_size     = 0;
-    int snd_buf_cnt      = 0;
-    int gfx_verbose      = 0;
-    int rand_mem         = 0;
-    int enable_mouse     = 0;
-    int ecs_bin_fail_ok  = 0;
-    char       *disp_res = NULL;
-    const char *err_msg  = NULL;
-    int locutus          = 0;
-    int fujinet_enable   = 0;
-    int fujinet_debug    = 0;
+    char *debug_symtbl      = NULL;
+    char *debug_script      = NULL;
+    char *debug_srcmap      = NULL;
+    int snd_buf_size        = 0;
+    int snd_buf_cnt         = 0;
+    int gfx_verbose         = 0;
+    int rand_mem            = 0;
+    int enable_mouse        = 0;
+    int ecs_bin_fail_ok     = 0;
+    int wbexec_bin_fail_ok  = 0;
+    char       *disp_res    = NULL;
+    const char *err_msg     = NULL;
+    int locutus             = 0;
+    int fujinet_enable      = 0;
+    int fujinet_debug       = 0;
     int fujinet_use_config_rom = 0;
-    char *fujinet_target = NULL;
-    char *fujinet_bootdump = NULL;
-    char *fujinet_bootdir  = NULL;
+    char *fujinet_target    = NULL;
+    char *fujinet_bootdump  = NULL;
+    char *fujinet_bootdir   = NULL;
 #ifndef NO_SERIALIZER
     ser_hier_t *ser_cfg;
 #endif
     game_metadata_t *meta = NULL;
-    int meta_needs_free = 0;
+    int meta_needs_free   = 0;
     int initial_event_map = 0;
     const bool batch_mode = plat_is_batch_mode();
+    int gp2xclock         = 200;    /* Only used on GP2X. */
+    char *cheat_str[NUM_CHEATS];
+    int cheat_idx[NUM_CHEATS];
+    int cheat_cnt = 0;
 
     char **argv_copy = CALLOC(char *, argc);
     char *argv_data;
@@ -582,13 +619,11 @@ void cfg_init(cfg_t *cfg, int argc, char * argv_orig[])
     opterr = 0;
     optarg = NULL;
 
-#ifdef GP2X
-    int gp2xclock = 200;
-#endif
+    /* -------------------------------------------------------------------- */
+    /*  Default to silent on Wii.                                           */
+    /* -------------------------------------------------------------------- */
+    silent |= PLAT_WII;
 
-#ifdef WII
-    silent = 1;
-#endif
     /* -------------------------------------------------------------------- */
     /*  Initialize random number generator.  Do this before peripherals,    */
     /*  as some may use the random number generator.                        */
@@ -607,14 +642,16 @@ void cfg_init(cfg_t *cfg, int argc, char * argv_orig[])
     /* -------------------------------------------------------------------- */
     memset((void *)cfg, 0, sizeof(cfg_t));
 
-    cfg->pal_mode   = 0;            /* Default NTSC                         */
-    cfg->gram_size  = -1;           /* Automatic GRAM size                  */
-    cfg->audio_rate = DEFAULT_AUDIO_HZ;     /* see config.h                 */
-    cfg->psg_window = -1;           /* Automatic window setting.            */
-    cfg->ecs_enable = -1;           /* Automatic (dflt: ECS off)            */
-    cfg->ivc_enable = -1;           /* Automatic (dflt: Intellivoice off.   */
-    cfg->ivc_window = -1;           /* Automatic window setting.            */
-    cfg->gfx_flags  = 0             /* Windowed, single buf, hardware surf  */
+    cfg->pal_mode    = 0;    /* Default NTSC                                */
+    cfg->gram_size   = -1;   /* Automatic GRAM size                         */
+    cfg->audio_rate  = DEFAULT_AUDIO_HZ;  /* see config.h                   */
+    cfg->psg_window  = -1;   /* Automatic window setting.                   */
+    cfg->ecs_enable  = -1;   /* Automatic (dflt: ECS off)                   */
+    cfg->ivc_enable  = -1;   /* Automatic (dflt: Intellivoice off.          */
+    cfg->sptv_enable = -1;   /* Automatic (dflt: Super Pro TutorVision off) */
+    cfg->tv_enable   = -1;   /* Automatic (dflt: TutorVision off)           */
+    cfg->ivc_window  = -1;   /* Automatic window setting.                   */
+    cfg->gfx_flags   = 0     /* Windowed, single buf, hardware surf         */
 #if 0
                     | GFX_DRECTS    /* Dirty rectangle update               */
                     | GFX_DRCMRG;   /* Allow merging cln rect btwn 2 dirty  */
@@ -666,6 +703,8 @@ void cfg_init(cfg_t *cfg, int argc, char * argv_orig[])
     ser_cfg = ser_new_hierarchy(NULL, "cfg");
     SER_REG(ecs_enable, ser_s32,    1,  SER_INIT|SER_MAND);
     SER_REG(ivc_enable, ser_s32,    1,  SER_INIT|SER_MAND);
+    SER_REG(sptv_enable, ser_s32,   1,  SER_INIT|SER_MAND);
+    SER_REG(tv_enable,  ser_s32,    1,  SER_INIT|SER_MAND);
     SER_REG(ivc_tname,  ser_string, 1,  SER_INIT|SER_MAND);
 #endif
 
@@ -705,6 +744,8 @@ void cfg_init(cfg_t *cfg, int argc, char * argv_orig[])
             case 'G': cfg->gram_size  = value;                          break;
             case 'F': STR_REPLACE(audiofile       , optarg);            break;
             case 's': cfg->ecs_enable = value;                          break;
+            case 't': cfg->tv_enable  = value;                          break;
+            case 'u': cfg->sptv_enable = value;                         break;
             case 'z': STR_REPLACE(disp_res        , optarg);            break;
             case 'd': cfg->debugging  = 1;                              break;
             case 'r': cfg->rate_ctl   = dvalue;                         break;
@@ -744,9 +785,7 @@ void cfg_init(cfg_t *cfg, int argc, char * argv_orig[])
                 break;
 
             case FLAG_GP2X_CLOCK:
-#ifdef GP2X
                 gp2xclock = value;                                
-#endif
                 break;
 
 #define CHG_BIT(var, bit, to) (var) = ((var) & ~(bit)) | ((to) ? (bit) : 0)
@@ -781,6 +820,10 @@ void cfg_init(cfg_t *cfg, int argc, char * argv_orig[])
 
             case FLAG_GFX_DR_MERGE:
                 CHG_BIT(cfg->gfx_flags, GFX_DRCMRG, value);       
+                break;
+
+            case FLAG_GFX_ASPECT_4_3:
+                gfx_force_4_3 = 1;
                 break;
 
             case FLAG_GFX_VERBOSE:
@@ -921,11 +964,27 @@ void cfg_init(cfg_t *cfg, int argc, char * argv_orig[])
                 break;
             }
 
-            case FLAG_CHEAT:
+            case FLAG_CHEAT:   case FLAG_CHEAT0:  case FLAG_CHEAT1:
+            case FLAG_CHEAT2:  case FLAG_CHEAT3:  case FLAG_CHEAT4:
+            case FLAG_CHEAT5:  case FLAG_CHEAT6:  case FLAG_CHEAT7:
+            case FLAG_CHEAT8:  case FLAG_CHEAT9:  case FLAG_CHEAT10:
+            case FLAG_CHEAT11: case FLAG_CHEAT12: case FLAG_CHEAT13:
+            case FLAG_CHEAT14: case FLAG_CHEAT15: case FLAG_CHEAT16:
+            case FLAG_CHEAT17: case FLAG_CHEAT18: case FLAG_CHEAT19:
+            case FLAG_CHEAT20: case FLAG_CHEAT21: case FLAG_CHEAT22:
+            case FLAG_CHEAT23: case FLAG_CHEAT24: case FLAG_CHEAT25:
+            case FLAG_CHEAT26: case FLAG_CHEAT27: case FLAG_CHEAT28:
+            case FLAG_CHEAT29: case FLAG_CHEAT30: case FLAG_CHEAT31:
             {
-                if (cheat_add(&cfg->cheat, optarg))
+                const int idx = c == FLAG_CHEAT ? CHEAT_FIRST_AVAIL
+                                                : c - FLAG_CHEAT0;
+                if (cheat_cnt < NUM_CHEATS)
                 {
-                    fprintf(stderr, "Unable to parse cheat arg.\n");
+                    cheat_idx[cheat_cnt  ] = idx;
+                    cheat_str[cheat_cnt++] = strdup(optarg);
+                } else
+                {
+                    fprintf(stderr, "Too many cheat arguments.\n");
                     exit(1);
                 }
                 break;
@@ -973,33 +1032,31 @@ void cfg_init(cfg_t *cfg, int argc, char * argv_orig[])
     } else
         jzp_init(silent, stdout, NULL, NULL);
 
-#ifdef WII
     /* -------------------------------------------------------------------- */
     /*  On WII, just make sure we're full-screen.                           */
     /* -------------------------------------------------------------------- */
-    cfg->gfx_flags |= GFX_FULLSC;
-#endif
+    if (PLAT_WII)
+        cfg->gfx_flags |= GFX_FULLSC;
 
-#ifdef GP2X
     /* -------------------------------------------------------------------- */
     /*  On GP2X, simply force a few arguments to the only supported vals.   */
     /*  Also, adjust the clock if the user requests it.                     */
     /* -------------------------------------------------------------------- */
-    cfg->gfx_flags |=  GFX_FULLSC;
-    cfg->gfx_flags &= ~GFX_DBLBUF;
-    STR_REPLACE(disp_res, "2");
-
-    if (gp2xclock > 0)
+    if (PLAT_LINUX == PLAT_LINUX_GP2X)
     {
-        extern int gp2x_speed(int);
+        cfg->gfx_flags |=  GFX_FULLSC;
+        cfg->gfx_flags &= ~GFX_DBLBUF;
+        STR_REPLACE(disp_res, "2");
 
-        if (gp2x_speed(gp2xclock))
+        if (gp2xclock > 0)
         {
-            jzp_printf("Clock rate %d unsupported.\n", gp2xclock);
-            exit(1);
+            if (gp2x_speed(gp2xclock))
+            {
+                jzp_printf("Clock rate %d unsupported.\n", gp2xclock);
+                exit(1);
+            }
         }
     }
-#endif
 
     /* -------------------------------------------------------------------- */
     /*  If the user specified a palette file, read it in.                   */
@@ -1141,70 +1198,10 @@ void cfg_init(cfg_t *cfg, int argc, char * argv_orig[])
     cfg->i2pc1_port = i2pc_ports[cfg->i2pc1_port];
 #endif
 
-    /* -------------------------------------------------------------------- */
-    /*  Create a new peripheral bus for the Intellivision main console.     */
-    /* -------------------------------------------------------------------- */
-    cfg->intv = periph_new(16, 16, 4);
-    strncpy(cfg->intv->periph.name, "MasterComponent", 16);
 
     /* -------------------------------------------------------------------- */
-    /*  Now, configure the Intellivision according to our flags.  Start     */
-    /*  off by reading in the EXEC, GROM, and GAME images.                  */
+    /*                     START Read ROM CFG Metadata                      */
     /* -------------------------------------------------------------------- */
-    f = path_fopen(rom_path, cfg->fn_exec, "rb");
-
-    exec_type = 0;
-    if (!f || file_read_rom16(f, 4096, cfg->exec_img) != 4096)
-    {
-        if (errno) perror("file_read_rom16");
-        fprintf(stderr, "ERROR:  Could not read EXEC image '%s'\n",
-                cfg->fn_exec);
-        dump_search_path(rom_path);
-        exit(1);
-    }
-    lzoe_fseek(f, 0, SEEK_END);
-    if (lzoe_ftell(f) == 2 * (4096 + 256))
-    {
-        exec_type = 1;
-        lzoe_fseek(f, 8192, SEEK_SET);
-        if (file_read_rom16(f, 256, cfg->exec_img + 4096) != 256)
-        {
-            if (errno) perror("file_read_rom16");
-            fprintf(stderr, "ERROR:  Could not read EXEC2 image '%s'\n",
-                    cfg->fn_exec);
-            exit(1);
-        }
-    } else if (lzoe_ftell(f) == 2 * 8192)
-    {
-        exec_type = 2;  /* INTV88 / TutorVision */
-        lzoe_fseek(f, 8192, SEEK_SET);
-        if (file_read_rom16(f, 4096, cfg->exec_img + 4096) != 4096)
-        {
-            if (errno) perror("file_read_rom16");
-            fprintf(stderr, "ERROR:  Could not read WBEXEC image '%s'\n",
-                    cfg->fn_exec);
-            exit(1);
-        }
-    }
-
-    lzoe_fclose(f);
-
-    f = path_fopen(rom_path, cfg->fn_grom, "rb");
-    if (!f || file_read_rom8 (f, 2048, cfg->grom_img) != 2048)
-    {
-        if (errno) perror("file_read_rom8");
-        fprintf(stderr, "ERROR:  Could not read GROM image '%s'\n",
-                cfg->fn_grom);
-        dump_search_path(rom_path);
-        exit(1);
-    }
-    lzoe_fclose(f);
-
-    /* -------------------------------------------------------------------- */
-    /*  Once we know the EXEC type, adjust the GRAM size if necessary       */
-    /* -------------------------------------------------------------------- */
-    if (cfg->gram_size < 0)
-        cfg->gram_size = exec_type == 2 ? 2 : 0;
 
     /* -------------------------------------------------------------------- */
     /*  XXX:  Hack:  If locutus == 1, then this is a LUIGI file.  Short     */
@@ -1378,6 +1375,25 @@ locutus_loaded:
     if (meta)
     {
         game_metadata_set_unspec_compat_to_defaults(meta);
+        if (cfg->sptv_enable > 0 || cfg->tv_enable > 0 || (cfg->tv_enable == -1 && meta->tv_compat >= CMP_ENHANCED) ) {
+            cfg->tv_enable = 1;
+
+            if (cfg->sptv_enable <= 0) { 
+                STR_REPLACE(cfg->fn_exec, "wbexec.bin");
+            } else {
+                STR_REPLACE(cfg->fn_exec, "superproexec.bin");
+            }
+
+            STR_REPLACE(cfg->fn_grom, "wbgrom.bin");
+
+            if (meta->tv_compat == CMP_ENHANCED) {
+                wbexec_bin_fail_ok = 1;
+            }
+
+        } else if (cfg->tv_enable == 0 && meta->tv_compat == CMP_REQUIRES) {
+            jzp_printf("\nWARNING:  TutorVision explicitly disabled; "
+                "however the game says the TutorVision is required.\n\n");
+        }
 
         if (cfg->ecs_enable == -1 && meta->ecs_compat >= CMP_ENHANCED)
         {
@@ -1419,6 +1435,111 @@ locutus_loaded:
     }
 
     /* -------------------------------------------------------------------- */
+    /*                     END Read ROM CFG Metadata                        */
+    /* -------------------------------------------------------------------- */
+
+    /* -------------------------------------------------------------------- */
+    /*  Create a new peripheral bus for the Intellivision main console.     */
+    /* -------------------------------------------------------------------- */
+    cfg->intv = periph_new(16, 16, 4);
+    strncpy(cfg->intv->periph.name, "MasterComponent", 16);
+
+
+    /* -------------------------------------------------------------------- */
+    /*  Now, configure the Intellivision according to our flags.  Start     */
+    /*  off by reading in the EXEC, GROM, and GAME images.                  */
+    /* -------------------------------------------------------------------- */
+
+    f = path_fopen(rom_path, cfg->fn_exec, "rb");
+    if (!f && wbexec_bin_fail_ok == 1) {
+        STR_REPLACE(cfg->fn_exec, "superproexec.bin");
+        f = path_fopen(rom_path, cfg->fn_exec, "rb");
+        jzp_printf(
+            "\n"
+            "NOTE: Game is 'enhanced by' the TutorVision, and"
+            " jzIntv tried to automatically enable\n"
+            "      TutorVision support.  However, jzIntv was "
+            "unable to load wbexec.bin.\n\n"
+            "      falling back to superproexec.bin.\n\n");
+
+        if (!f) { 
+            STR_REPLACE(cfg->fn_exec, "exec.bin"); 
+            f = path_fopen(rom_path, cfg->fn_exec, "rb");
+            jzp_printf(
+                "\n"
+                "NOTE: Game is 'enhanced by' the TutorVision, and"
+                " jzIntv tried to automatically enable\n"
+                "      TutorVision support.  However, jzIntv was "
+                "unable to load the superproexec.bin.\n\n"
+                "      falling back to exec.bin.\n\n");
+        }
+    }
+
+    exec_type = 0;
+    if (!f || file_read_rom16(f, 4096, cfg->exec_img) != 4096)
+    {
+        if (errno) perror("file_read_rom16");
+        fprintf(stderr, "ERROR:  Could not read EXEC image '%s'\n",
+                cfg->fn_exec);
+        dump_search_path(rom_path);
+        exit(1);
+    }
+    lzoe_fseek(f, 0, SEEK_END);
+    if (lzoe_ftell(f) == 2 * (4096 + 256))
+    {
+        exec_type = 1;
+        lzoe_fseek(f, 8192, SEEK_SET);
+        if (file_read_rom16(f, 256, cfg->exec_img + 4096) != 256)
+        {
+            if (errno) perror("file_read_rom16");
+            fprintf(stderr, "ERROR:  Could not read EXEC2 image '%s'\n",
+                    cfg->fn_exec);
+            exit(1);
+        }
+    } else if (lzoe_ftell(f) == 2 * 8192)
+    {
+        exec_type = 2;  /* INTV88 / TutorVision */
+        lzoe_fseek(f, 8192, SEEK_SET);
+        if (file_read_rom16(f, 4096, cfg->exec_img + 4096) != 4096)
+        {
+            if (errno) perror("file_read_rom16");
+            fprintf(stderr, "ERROR:  Could not read WBEXEC image '%s'\n",
+                    cfg->fn_exec);
+            exit(1);
+        }
+    }
+    lzoe_fclose(f);
+
+    f = path_fopen(rom_path, cfg->fn_grom, "rb");
+    if (!f && wbexec_bin_fail_ok == 1) {
+        STR_REPLACE(cfg->fn_grom, "grom.bin");
+        f = path_fopen(rom_path, cfg->fn_grom, "rb");
+        jzp_printf(
+            "\n"
+            "NOTE: Game is 'enhanced by' the TutorVision, and"
+            " jzIntv tried to automatically enable\n"
+            "      TutorVision support.  However, jzIntv was "
+            "unable to load the TutorVision Grom.\n\n"
+            "      Disabling TutorVision Grom support.\n\n");
+    }
+
+    if (!f || file_read_rom8 (f, 2048, cfg->grom_img) != 2048)
+    {
+        if (errno) perror("file_read_rom8");
+        fprintf(stderr, "ERROR:  Could not read GROM image '%s'\n",
+                cfg->fn_grom);
+        dump_search_path(rom_path);
+        exit(1);
+    }
+    lzoe_fclose(f);
+
+    /* -------------------------------------------------------------------- */
+    /*  Once we know the EXEC type, adjust the GRAM size if necessary       */
+    /* -------------------------------------------------------------------- */
+    if (cfg->gram_size < 0)
+        cfg->gram_size = exec_type == 2 ? 2 : 0;
+
+    /* -------------------------------------------------------------------- */
     /*  Try to load the ECS ROM image early, in case we need to fall back   */
     /*  to ECS-disabled.  That way, subsequent code that tests ecs_enable   */
     /*  sees the correct state.                                             */
@@ -1453,14 +1574,25 @@ locutus_loaded:
     }
 skip_ecs:;
 
-#ifdef WII
+    /* -------------------------------------------------------------------- */
+    /*  Load any requested cheats.                                          */
+    /* -------------------------------------------------------------------- */
+    for (int i = 0; i < cheat_cnt; ++i)
+    {
+        if (cheat_add(&cfg->cheat, cheat_str[i], cheat_idx[i]))
+        {
+            fprintf(stderr, "Unable to parse cheat arg '%s'.\n", cheat_str[i]);
+            exit(1);
+        }
+        CONDFREE(cheat_str[i]);
+    }
+
     /* -------------------------------------------------------------------- */
     /*  On the Wii, default to the ECS keyboard bindings if ECS is enabled  */
     /*  since controller input will come from actual Wii controllers.       */
     /* -------------------------------------------------------------------- */
-    if (cfg->ecs_enable > 0)
+    if (PLAT_WII && cfg->ecs_enable > 0)
         initial_event_map = 2;
-#endif
 
     /* -------------------------------------------------------------------- */
     /*  Initialize the peripherals.                                         */
@@ -1692,7 +1824,8 @@ skip_ecs:;
         exit(1);
     }
 
-    if (event_init(&cfg->event, enable_mouse, initial_event_map))
+    if (event_init(&cfg->event, enable_mouse, initial_event_map,
+                   &cfg->do_evt_map_chgd))
     {
         fprintf(stderr, "ERROR:  Failed to initialize event subsystem.\n");
         exit(1);
@@ -1895,7 +2028,7 @@ skip_ecs:;
     /* -------------------------------------------------------------------- */
     /*  Register the cheat engine if we have any cheats.                    */
     /* -------------------------------------------------------------------- */
-    if (cheat_count(&cfg->cheat))
+    if (cheat_active(&cfg->cheat))
         periph_register(P(cheat),  0x0000, 0x0000, "[Cheat]");
 
     /* -------------------------------------------------------------------- */
