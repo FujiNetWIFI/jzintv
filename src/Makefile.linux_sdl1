@@ -39,8 +39,11 @@ ENABLE_CGC ?= 1
 GNU_READLINE ?= 1
 
 # Get SDL1 related build flags.
-SDL1_CFLAGS := $(shell sdl-config --cflags)
+SDL1_CFLAGS := $(shell sdl-config --cflags) -DUSE_SDL=1
 SDL1_LFLAGS := $(shell sdl-config --static-libs)
+
+SDL1_CFLAGS += $(SDL1_CFLAGS_EXTRA)
+SDL1_LFLAGS += $(SDL1_LFLAGS_EXTRA)
 
 # Override these in a .mak file. See buidlcfg/00-compiler*.txt for examples.
 #

@@ -57,7 +57,6 @@ SLFLAGS ?= -static $(LFLAGS)
  include name/subMakefile       # Name database
  include serializer/subMakefile # Serializer (save/load)
  include jlp/subMakefile        # Jean-Luc Project extra features support
- include fujinet/subMakefile    # FujiNet mailbox peripheral (BoIP client)
  include scale/subMakefile      # Scale2x/3x/4x
  include locutus/subMakefile    # Locutus / LUIGI support
  include zlib/subMakefile       # deflate compression for AVI support

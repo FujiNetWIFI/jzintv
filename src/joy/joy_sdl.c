@@ -34,7 +34,7 @@ LOCAL int    joy_cnt = 0;
 #define AC_INIT     (AC_INIT_X + AC_INIT_Y)
 
 #define DIR_MAG     (32768)
-#if defined(PLAT_LINUX)
+#if PLAT_LINUX
 # define PUSH_THRESH (128*DIR_MAG / 6)
 # define RELS_THRESH (128*DIR_MAG /10)
 # define AUTOCENTER  (0)
@@ -184,7 +184,7 @@ int joy_init(int verbose, char *cfg[MAX_JOY][MAX_STICKS])
         sj = SDL_JoystickOpen(jn);
         if (sj)
         {
-#ifdef USE_SDL2
+#if SDL_VERSION_ATLEAST(2, 0, 0)
             joy[jn].name = strdup(SDL_JoystickName(sj));
 #else
             joy[jn].name = strdup(SDL_JoystickName(jn));

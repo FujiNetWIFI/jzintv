@@ -198,7 +198,7 @@ LOCAL void debug_print_usage(void)
 "                   3 => $1234\n"
 "  < <path>     Execute a script from <path>. Scripts are just collections of\n"
 "               debugger commands, one per line.\n"
-#ifdef WIN32
+#if PLAT_WIN32 && !defined(USE_GNU_READLINE)
 "  > <#>        Change the command window width to <#>\n"
 #endif
 "  q            Quit jzIntv\n"
@@ -804,6 +804,7 @@ LOCAL int debug_readline(char *const buf, const size_t buf_size,
         return 0;
     }
 
+    jzp_printed = false;
     rl_already_prompted = 1;
     char *line = readline(prompt);
 
@@ -846,6 +847,15 @@ LOCAL int debug_readline_event_hook(void)
 
     if (gfx)
         gfx_refresh(gfx);
+
+    if (jzp_printed)
+    {
+        jzp_printf("\r");
+        jzp_flush();
+        jzp_printed = false;
+        rl_on_new_line();
+        rl_forced_update_display();
+    }
 
     return 0;
 }

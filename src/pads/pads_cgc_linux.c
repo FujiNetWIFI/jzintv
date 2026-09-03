@@ -287,10 +287,10 @@ int pad_cgc_linux_init
     /* -------------------------------------------------------------------- */
     /*  Establish a scanner thread.                                         */
     /* -------------------------------------------------------------------- */
-#ifndef USE_SDL2
-    th = SDL_CreateThread(pad_cgc_scanner, (void*)pad);
-#else
+#if SDL_VERSION_ATLEAST(2, 0, 0)
     th = SDL_CreateThread(pad_cgc_scanner, "jzintv CGC scanner", (void*)pad);
+#else
+    th = SDL_CreateThread(pad_cgc_scanner, (void*)pad);
 #endif
 
     if (!th)

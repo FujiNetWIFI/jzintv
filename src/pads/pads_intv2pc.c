@@ -25,7 +25,7 @@
 #include <string.h>
 #include <errno.h>
 #include <assert.h>
-#ifndef WIN32
+#if !PLAT_WIN32
 # include <sys/io.h>
 #endif
 

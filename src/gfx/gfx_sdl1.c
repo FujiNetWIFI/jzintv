@@ -177,10 +177,11 @@ again:
     /*  resolution, that mode will suport 8 bits-per-pixel.                 */
     /*  Play this on a EGA machine at your own risk. ;-)                    */
     /* -------------------------------------------------------------------- */
-#ifdef GP2X
-    actual_x = 320;
-    actual_y = 240;
-#else
+    if (PLAT_LINUX == PLAT_LINUX_GP2X)
+    {
+        actual_x = 320;
+        actual_y = 240;
+    } else
     {
         SDL_Rect **available_modes;
         available_modes = SDL_ListModes(NULL, sdl_flags);
@@ -262,7 +263,6 @@ again:
             actual_y = available_modes[best]->h;
         }
     }
-#endif
 
     scr = SDL_SetVideoMode(actual_x, actual_y, desire_bpp, sdl_flags);
 

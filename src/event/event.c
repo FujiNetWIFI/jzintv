@@ -49,16 +49,16 @@
 #include "event/event_tbl.h"
 #include "event/event_plat.h"
 
-#define KBD_STACK_EMPTY (-1)
+#define EVT_MAP_STACK_EMPTY (0)
 
 /* ======================================================================== */
 /*  EVENT_MASK_T     -- Structure containing AND/OR masks for an event.     */
 /* ======================================================================== */
 typedef struct event_mask_t
 {
-    uint32_t    *word;           /* Word to mask, or NULL if none.   */
-    uint32_t    and_mask[2];    /* AND masks (up/down)              */
-    uint32_t    or_mask [2];    /* OR masks (up/down)               */
+    uint32_t    *word;              /* Word to mask, or NULL if none.       */
+    uint32_t    and_mask[2];        /* AND masks (up/down)                  */
+    uint32_t    or_mask [2];        /* OR masks (up/down)                   */
 } event_mask_t;
 
 #define EV_Q_LEN (256)
@@ -95,6 +95,7 @@ struct evt_pvt_t
 
     int           current_map;      /* Currently active event mapping.      */
     int           stacked_map;      /* "Pushed" event mapping, or none.     */
+    uint32_t     *evt_map_changed;  /* Flag back to emu that map changed.   */
 
     /* Combo-related processing. */
     double        soon;             /* When to next process events.         */
@@ -138,9 +139,10 @@ LOCAL void event_dtor(periph_t *const p);
 /* ======================================================================== */
 int event_init
 (
-    event_t *const event,           // The event structure.
-    const bool enable_mouse,        // Are we enabling the mouse?
-    const int initial_event_map     // Initial event map at startup.
+    event_t *const event,               // The event structure.
+    const bool enable_mouse,            // Are we enabling the mouse?
+    const int initial_event_map,        // Initial event map at startup.
+    uint32_t *const evt_map_changed     // Where to report event map changes.
 )
 {
     /* -------------------------------------------------------------------- */
@@ -170,8 +172,9 @@ int event_init
     /* -------------------------------------------------------------------- */
     /*  Initialize our active event mapping and event map stack.            */
     /* -------------------------------------------------------------------- */
-    pvt->current_map  = initial_event_map;
-    pvt->stacked_map  = KBD_STACK_EMPTY;
+    pvt->current_map = initial_event_map;
+    pvt->stacked_map = EVT_MAP_STACK_EMPTY;
+    pvt->evt_map_changed = evt_map_changed;
 
     /* -------------------------------------------------------------------- */
     /*  Set up our event-coalescing timer.                                  */
@@ -338,6 +341,16 @@ LOCAL uint32_t event_tick(periph_t *const p, uint32_t len)
         /* ---------------------------------------------------------------- */
         *event_mask->word &= event_mask->and_mask[event_updn];
         *event_mask->word |= event_mask->or_mask [event_updn];
+
+        /* ---------------------------------------------------------------- */
+        /*  If this was a keyboard map change, execute it immediately.      */
+        /* ---------------------------------------------------------------- */
+        if (event->chg_evt_map)
+        {
+            event_change_active_map(event,
+                                    (ev_map_change_req)event->chg_evt_map);
+            event->chg_evt_map = 0;
+        }
     }
 
     /* -------------------------------------------------------------------- */
@@ -810,15 +823,19 @@ void event_change_active_map(event_t *const event,
 
         case EV_MAP_PSH_0: case EV_MAP_PSH_1:
         case EV_MAP_PSH_2: case EV_MAP_PSH_3:
+            if (pvt->stacked_map != EVT_MAP_STACK_EMPTY)
+                jzp_printf(
+                    "Warning:  Dropping previous stacked keyboard map %d.\n",
+                    pvt->stacked_map & 3);
             pvt->stacked_map = pvt->current_map | 4;
             pvt->current_map = ((int)map_change_req - EV_MAP_PSH_0) & 3;
             break;
 
         case EV_MAP_POP:
-            if (pvt->stacked_map)
+            if (pvt->stacked_map != EVT_MAP_STACK_EMPTY)
             {
                 pvt->current_map = pvt->stacked_map & 3;
-                pvt->stacked_map = 0;
+                pvt->stacked_map = EVT_MAP_STACK_EMPTY;
             }
             break;
 
@@ -829,8 +846,13 @@ void event_change_active_map(event_t *const event,
 
     if (previous_map != pvt->current_map)
     {
+        /* Alert rest of emulator that the map's changed. */
+        if (pvt->evt_map_changed)
+            *pvt->evt_map_changed = 1;
         jzp_clear_and_eol(
-            jzp_printf("Switching to input map %d", pvt->current_map));
+            jzp_printf(
+                "\rSwitching to input map %d.        [Prev: %d, Stack: %c]",
+                pvt->current_map, previous_map, pvt->stacked_map["----0123"]));
         jzp_flush();
     }
 }

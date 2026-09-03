@@ -11,7 +11,7 @@
 #include "../config.h"
 #include "util/ecscable.h"
 
-#if (!defined(PLAT_LINUX) && !defined(WIN32)) || !defined(i386)
+#if (!PLAT_LINUX && !PLAT_WIN32) || !defined(i386)
 
 void ec_sleep(long len)
 {

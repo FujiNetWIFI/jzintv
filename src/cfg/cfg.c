@@ -44,8 +44,6 @@
 #include "joy/joy.h"
 #include "serializer/serializer.h"
 #include "jlp/jlp.h"
-#include "fujinet/fujinet.h"
-#include "fujinet/fujinet_config_rom.h"
 #include "plat/plat.h"
 #include "plat/plat_lib.h"
 #include "misc/file_crc32.h"
@@ -368,8 +366,13 @@ enum
     FLAG_START_DELAY,   FLAG_DBG_SCRIPT,   FLAG_DBG_SRCMAP,   FLAG_FILE_IO,
     FLAG_ENABLE_MOUSE,  FLAG_PRESCALE,     FLAG_JLP_SAVEGAME, FLAG_AVI_RATE,
     FLAG_LOCUTUS,       FLAG_ECS_TAPE,     FLAG_ECS_PRINTER,  FLAG_CHEAT,
-    FLAG_FUJINET,       FLAG_FUJINET_DEBUG,FLAG_FUJINET_BOOTDUMP,
-    FLAG_FUJINET_BOOTDIR
+    FLAG_CHEAT0,  FLAG_CHEAT1,  FLAG_CHEAT2,  FLAG_CHEAT3,  FLAG_CHEAT4,
+    FLAG_CHEAT5,  FLAG_CHEAT6,  FLAG_CHEAT7,  FLAG_CHEAT8,  FLAG_CHEAT9,
+    FLAG_CHEAT10, FLAG_CHEAT11, FLAG_CHEAT12, FLAG_CHEAT13, FLAG_CHEAT14,
+    FLAG_CHEAT15, FLAG_CHEAT16, FLAG_CHEAT17, FLAG_CHEAT18, FLAG_CHEAT19,
+    FLAG_CHEAT20, FLAG_CHEAT21, FLAG_CHEAT22, FLAG_CHEAT23, FLAG_CHEAT24,
+    FLAG_CHEAT25, FLAG_CHEAT26, FLAG_CHEAT27, FLAG_CHEAT28, FLAG_CHEAT29,
+    FLAG_CHEAT30, FLAG_CHEAT31
 };
 
 struct option cfg_longopt[] =
@@ -444,7 +447,7 @@ struct option cfg_longopt[] =
     JS_FLAG(8),
     JS_FLAG(9),
 
-#ifdef GP2X
+#if PLAT_LINUX == PLAT_LINUX_GP2X
     {   "gp2xclock",    1,      NULL,       FLAG_GP2X_CLOCK     },
 #endif
 
@@ -493,10 +496,21 @@ struct option cfg_longopt[] =
     {   "ecs-printer",  1,      NULL,       FLAG_ECS_PRINTER    },
     {   "cheat",        1,      NULL,       FLAG_CHEAT          },
 
-    {   "fujinet",      2,      NULL,       FLAG_FUJINET        },
-    {   "fujinet-debug",0,      NULL,       FLAG_FUJINET_DEBUG  },
-    {   "fujinet-bootdump", 1,  NULL,       FLAG_FUJINET_BOOTDUMP },
-    {   "fujinet-bootdir",  1,  NULL,       FLAG_FUJINET_BOOTDIR  },
+#define CH_FLAG(c) \
+    {   "cheat" #c "0", 1,      NULL,       FLAG_CHEAT##c##0    }, \
+    {   "cheat" #c "1", 1,      NULL,       FLAG_CHEAT##c##1    }, \
+    {   "cheat" #c "2", 1,      NULL,       FLAG_CHEAT##c##2    }, \
+    {   "cheat" #c "3", 1,      NULL,       FLAG_CHEAT##c##3    }, \
+    {   "cheat" #c "4", 1,      NULL,       FLAG_CHEAT##c##4    }, \
+    {   "cheat" #c "5", 1,      NULL,       FLAG_CHEAT##c##5    }, \
+    {   "cheat" #c "6", 1,      NULL,       FLAG_CHEAT##c##6    }, \
+    {   "cheat" #c "7", 1,      NULL,       FLAG_CHEAT##c##7    }, \
+    {   "cheat" #c "8", 1,      NULL,       FLAG_CHEAT##c##8    }, \
+    {   "cheat" #c "9", 1,      NULL,       FLAG_CHEAT##c##9    }
+
+    CH_FLAG(), CH_FLAG(1), CH_FLAG(2),
+    {   "cheat30",      1,      NULL,       FLAG_CHEAT30        },
+    {   "cheat31",      1,      NULL,       FLAG_CHEAT31        },
 
     {   NULL,           0,      NULL,       0                   }
 };
@@ -510,6 +524,7 @@ LOCAL const char *optchars= "b:E:e:G:g:s::f::F:?dhlqr:P::x::z:a:w:B:C:M:m:"
 const uint32_t i2pc_ports[4] = { 0x0, 0x378, 0x278, 0x3BC };
 
 LOCAL char *joy_cfg[MAX_JOY][MAX_STICKS];
+
 
 /* ======================================================================== */
 /*  CFG_INIT     -- Parse command line and get started                      */
@@ -544,19 +559,17 @@ void cfg_init(cfg_t *cfg, int argc, char * argv_orig[])
     char       *disp_res = NULL;
     const char *err_msg  = NULL;
     int locutus          = 0;
-    int fujinet_enable   = 0;
-    int fujinet_debug    = 0;
-    int fujinet_use_config_rom = 0;
-    char *fujinet_target = NULL;
-    char *fujinet_bootdump = NULL;
-    char *fujinet_bootdir  = NULL;
 #ifndef NO_SERIALIZER
     ser_hier_t *ser_cfg;
 #endif
     game_metadata_t *meta = NULL;
-    int meta_needs_free = 0;
+    int meta_needs_free   = 0;
     int initial_event_map = 0;
     const bool batch_mode = plat_is_batch_mode();
+    int gp2xclock         = 200;    /* Only used on GP2X. */
+    char *cheat_str[NUM_CHEATS];
+    int cheat_idx[NUM_CHEATS];
+    int cheat_cnt = 0;
 
     char **argv_copy = CALLOC(char *, argc);
     char *argv_data;
@@ -582,13 +595,11 @@ void cfg_init(cfg_t *cfg, int argc, char * argv_orig[])
     opterr = 0;
     optarg = NULL;
 
-#ifdef GP2X
-    int gp2xclock = 200;
-#endif
+    /* -------------------------------------------------------------------- */
+    /*  Default to silent on Wii.                                           */
+    /* -------------------------------------------------------------------- */
+    silent |= PLAT_WII;
 
-#ifdef WII
-    silent = 1;
-#endif
     /* -------------------------------------------------------------------- */
     /*  Initialize random number generator.  Do this before peripherals,    */
     /*  as some may use the random number generator.                        */
@@ -744,9 +755,7 @@ void cfg_init(cfg_t *cfg, int argc, char * argv_orig[])
                 break;
 
             case FLAG_GP2X_CLOCK:
-#ifdef GP2X
                 gp2xclock = value;                                
-#endif
                 break;
 
 #define CHG_BIT(var, bit, to) (var) = ((var) & ~(bit)) | ((to) ? (bit) : 0)
@@ -860,24 +869,6 @@ void cfg_init(cfg_t *cfg, int argc, char * argv_orig[])
                 STR_REPLACE(fn_ecs_printer, optarg);
                 break;
 
-            case FLAG_FUJINET:
-                fujinet_enable = 1;
-                if (!noarg && optarg)
-                    STR_REPLACE(fujinet_target, optarg);
-                break;
-
-            case FLAG_FUJINET_DEBUG:
-                fujinet_debug = 1;
-                break;
-
-            case FLAG_FUJINET_BOOTDUMP:
-                STR_REPLACE(fujinet_bootdump, optarg);
-                break;
-
-            case FLAG_FUJINET_BOOTDIR:
-                STR_REPLACE(fujinet_bootdir, optarg);
-                break;
-
             case 'c':
             {
                 const char *name = "Default";
@@ -921,11 +912,27 @@ void cfg_init(cfg_t *cfg, int argc, char * argv_orig[])
                 break;
             }
 
-            case FLAG_CHEAT:
+            case FLAG_CHEAT:   case FLAG_CHEAT0:  case FLAG_CHEAT1:
+            case FLAG_CHEAT2:  case FLAG_CHEAT3:  case FLAG_CHEAT4:
+            case FLAG_CHEAT5:  case FLAG_CHEAT6:  case FLAG_CHEAT7:
+            case FLAG_CHEAT8:  case FLAG_CHEAT9:  case FLAG_CHEAT10:
+            case FLAG_CHEAT11: case FLAG_CHEAT12: case FLAG_CHEAT13:
+            case FLAG_CHEAT14: case FLAG_CHEAT15: case FLAG_CHEAT16:
+            case FLAG_CHEAT17: case FLAG_CHEAT18: case FLAG_CHEAT19:
+            case FLAG_CHEAT20: case FLAG_CHEAT21: case FLAG_CHEAT22:
+            case FLAG_CHEAT23: case FLAG_CHEAT24: case FLAG_CHEAT25:
+            case FLAG_CHEAT26: case FLAG_CHEAT27: case FLAG_CHEAT28:
+            case FLAG_CHEAT29: case FLAG_CHEAT30: case FLAG_CHEAT31:
             {
-                if (cheat_add(&cfg->cheat, optarg))
+                const int idx = c == FLAG_CHEAT ? CHEAT_FIRST_AVAIL
+                                                : c - FLAG_CHEAT0;
+                if (cheat_cnt < NUM_CHEATS)
                 {
-                    fprintf(stderr, "Unable to parse cheat arg.\n");
+                    cheat_idx[cheat_cnt  ] = idx;
+                    cheat_str[cheat_cnt++] = strdup(optarg);
+                } else
+                {
+                    fprintf(stderr, "Too many cheat arguments.\n");
                     exit(1);
                 }
                 break;
@@ -942,14 +949,7 @@ void cfg_init(cfg_t *cfg, int argc, char * argv_orig[])
     }
 
     if (optind < argc)
-    {
         STR_REPLACE(cfg->fn_game, argv_copy[optind]);
-    } else if (fujinet_enable)
-    {
-        /*  No ROM given on the command line, but --fujinet was.  Boot the  */
-        /*  embedded FujiNet config ROM instead of the "game.rom" default.  */
-        fujinet_use_config_rom = 1;
-    }
 
     CONDFREE(argv_data);
     CONDFREE(argv_copy);
@@ -973,33 +973,31 @@ void cfg_init(cfg_t *cfg, int argc, char * argv_orig[])
     } else
         jzp_init(silent, stdout, NULL, NULL);
 
-#ifdef WII
     /* -------------------------------------------------------------------- */
     /*  On WII, just make sure we're full-screen.                           */
     /* -------------------------------------------------------------------- */
-    cfg->gfx_flags |= GFX_FULLSC;
-#endif
+    if (PLAT_WII)
+        cfg->gfx_flags |= GFX_FULLSC;
 
-#ifdef GP2X
     /* -------------------------------------------------------------------- */
     /*  On GP2X, simply force a few arguments to the only supported vals.   */
     /*  Also, adjust the clock if the user requests it.                     */
     /* -------------------------------------------------------------------- */
-    cfg->gfx_flags |=  GFX_FULLSC;
-    cfg->gfx_flags &= ~GFX_DBLBUF;
-    STR_REPLACE(disp_res, "2");
-
-    if (gp2xclock > 0)
+    if (PLAT_LINUX == PLAT_LINUX_GP2X)
     {
-        extern int gp2x_speed(int);
+        cfg->gfx_flags |=  GFX_FULLSC;
+        cfg->gfx_flags &= ~GFX_DBLBUF;
+        STR_REPLACE(disp_res, "2");
 
-        if (gp2x_speed(gp2xclock))
+        if (gp2xclock > 0)
         {
-            jzp_printf("Clock rate %d unsupported.\n", gp2xclock);
-            exit(1);
+            if (gp2x_speed(gp2xclock))
+            {
+                jzp_printf("Clock rate %d unsupported.\n", gp2xclock);
+                exit(1);
+            }
         }
     }
-#endif
 
     /* -------------------------------------------------------------------- */
     /*  If the user specified a palette file, read it in.                   */
@@ -1252,92 +1250,62 @@ void cfg_init(cfg_t *cfg, int argc, char * argv_orig[])
     }
 
     /* -------------------------------------------------------------------- */
-    /*  If --fujinet was given with no ROM on the command line, boot the    */
-    /*  embedded FujiNet config ROM (WiFi setup / host slots / directory    */
-    /*  browser) instead of looking for "game.rom".  An explicit ROM        */
-    /*  argument (handled above/below via cfg->fn_game) always takes        */
-    /*  precedence -- this branch is only reached when none was given.      */
+    /*  First try to load it as a legacy ROM.  If the legacy code decides   */
+    /*  it's not actually a BIN+CFG, it'll hand us back a .ROM filename.    */
     /* -------------------------------------------------------------------- */
-    if (fujinet_use_config_rom)
+    tmp = legacy_bincfg(&(cfg->legacy), rom_path, cfg->fn_game, &legacy_rom,
+                        &(cfg->cp1600), jlp_accel, jlp_flash, rand_mem);
+
+    if (legacy_rom && cfg->legacy.bc->metadata)
+        meta = cfg->legacy.bc->metadata;
+
+    if (legacy_rom && cfg->legacy.bc->diags)
     {
-        if (icart_init_mem(&cfg->icart, fujinet_config_rom,
-                           fujinet_config_rom_len, rand_mem))
+        jzp_printf("\n");
+        bc_print_diag(jzp_printer(),
+                      cfg->legacy.bc->cfgfile,
+                      cfg->legacy.bc->diags, 0);
+        jzp_printf("\n");
+    }
+
+    if (tmp == NULL)
+    {
+        fprintf(stderr, "ERROR:  Failed to initialize game\n");
+        exit(1);
+    }
+    CONDFREE(cfg->fn_game);
+    cfg->fn_game = tmp;
+
+    /* -------------------------------------------------------------------- */
+    /*  If it wasn't a legacy ROM, it must be an Intellicart ROM.           */
+    /* -------------------------------------------------------------------- */
+    if (!legacy_rom)
+    {
+        /* not path_fopen, because legacy_bincfg should do that for us. */
+        if (!(f = lzoe_fopen(cfg->fn_game, "rb")))
         {
-            fprintf(stderr, "ERROR:  Failed to register embedded FujiNet "
-                            "config ROM\n");
+            perror("fopen()");
+            fprintf(stderr, "ERROR:  Failed to open Intellicart ROM:\n  %s\n",
+                    cfg->fn_game);
             exit(1);
         }
 
+        /* ---------------------------------------------------------------- */
+        /*  Process the Intellicart ROM itself.                             */
+        /* ---------------------------------------------------------------- */
+        if (icart_init(&cfg->icart, f, rand_mem))
+        {
+            fprintf(stderr, "ERROR:  Failed to register Intellicart\n");
+            exit(1);
+        }
+
+        /* ---------------------------------------------------------------- */
+        /*  Grab a look-see on any metadata that was in there.              */
+        /* ---------------------------------------------------------------- */
         if (cfg->icart.rom.metadata)
             meta = cfg->icart.rom.metadata;
 
-        CONDFREE(cfg->fn_game);
-        cfg->fn_game = strdup("(embedded FujiNet config ROM)");
-
-        jzp_printf("FujiNet:  Booting embedded config ROM (%ld bytes)\n",
-                   fujinet_config_rom_len);
-    } else
-    {
-        /* -------------------------------------------------------------- */
-        /*  First try to load it as a legacy ROM.  If the legacy code      */
-        /*  decides it's not actually a BIN+CFG, it'll hand us back a      */
-        /*  .ROM filename.                                                 */
-        /* -------------------------------------------------------------- */
-        tmp = legacy_bincfg(&(cfg->legacy), rom_path, cfg->fn_game,
-                            &legacy_rom, &(cfg->cp1600), jlp_accel,
-                            jlp_flash, rand_mem);
-
-        if (legacy_rom && cfg->legacy.bc->metadata)
-            meta = cfg->legacy.bc->metadata;
-
-        if (legacy_rom && cfg->legacy.bc->diags)
-        {
-            jzp_printf("\n");
-            bc_print_diag(jzp_printer(),
-                          cfg->legacy.bc->cfgfile,
-                          cfg->legacy.bc->diags, 0);
-            jzp_printf("\n");
-        }
-
-        if (tmp == NULL)
-        {
-            fprintf(stderr, "ERROR:  Failed to initialize game\n");
-            exit(1);
-        }
-        CONDFREE(cfg->fn_game);
-        cfg->fn_game = tmp;
-
-        /* -------------------------------------------------------------- */
-        /*  If it wasn't a legacy ROM, it must be an Intellicart ROM.      */
-        /* -------------------------------------------------------------- */
-        if (!legacy_rom)
-        {
-            /* not path_fopen, because legacy_bincfg should do that for us. */
-            if (!(f = lzoe_fopen(cfg->fn_game, "rb")))
-            {
-                perror("fopen()");
-                fprintf(stderr, "ERROR:  Failed to open Intellicart ROM:\n"
-                                "  %s\n", cfg->fn_game);
-                exit(1);
-            }
-
-            /* ------------------------------------------------------------ */
-            /*  Process the Intellicart ROM itself.                         */
-            /* ------------------------------------------------------------ */
-            if (icart_init(&cfg->icart, f, rand_mem))
-            {
-                fprintf(stderr, "ERROR:  Failed to register Intellicart\n");
-                exit(1);
-            }
-
-            /* ------------------------------------------------------------ */
-            /*  Grab a look-see on any metadata that was in there.          */
-            /* ------------------------------------------------------------ */
-            if (cfg->icart.rom.metadata)
-                meta = cfg->icart.rom.metadata;
-
-            lzoe_fclose(f);
-        }
+        lzoe_fclose(f);
     }
 
     /* -------------------------------------------------------------------- */
@@ -1453,14 +1421,25 @@ locutus_loaded:
     }
 skip_ecs:;
 
-#ifdef WII
+    /* -------------------------------------------------------------------- */
+    /*  Load any requested cheats.                                          */
+    /* -------------------------------------------------------------------- */
+    for (int i = 0; i < cheat_cnt; ++i)
+    {
+        if (cheat_add(&cfg->cheat, cheat_str[i], cheat_idx[i]))
+        {
+            fprintf(stderr, "Unable to parse cheat arg '%s'.\n", cheat_str[i]);
+            exit(1);
+        }
+        CONDFREE(cheat_str[i]);
+    }
+
     /* -------------------------------------------------------------------- */
     /*  On the Wii, default to the ECS keyboard bindings if ECS is enabled  */
     /*  since controller input will come from actual Wii controllers.       */
     /* -------------------------------------------------------------------- */
-    if (cfg->ecs_enable > 0)
+    if (PLAT_WII && cfg->ecs_enable > 0)
         initial_event_map = 2;
-#endif
 
     /* -------------------------------------------------------------------- */
     /*  Initialize the peripherals.                                         */
@@ -1535,44 +1514,6 @@ skip_ecs:;
                 jlp_accel, jlp_flash, jlpsg ? jlpsg : "(none)");
         exit(1);
     }
-
-    if (fujinet_enable)
-    {
-        char *fn_host = NULL;
-        int   fn_port = 1985;
-
-        if (fujinet_target)
-        {
-            char *colon = strrchr(fujinet_target, ':');
-            if (colon)
-            {
-                *colon = 0;
-                fn_port = atoi(colon + 1);
-                if (fn_port <= 0 || fn_port > 65535)
-                    fn_port = 1985;
-            }
-            fn_host = strdup(fujinet_target[0] ? fujinet_target
-                                                : "localhost");
-        } else
-        {
-            fn_host = strdup("localhost");
-        }
-
-        if (fujinet_init(&cfg->fujinet, fn_host, fn_port, fujinet_debug,
-                         fujinet_bootdump, fujinet_bootdir,
-                         &cfg->icart, &cfg->cp1600,
-                         cfg->intv, cache_flags))
-        {
-            fprintf(stderr, "ERROR:  Failed to initialize FujiNet "
-                            "mailbox peripheral.\n");
-            CONDFREE(fn_host);
-            exit(1);
-        }
-        CONDFREE(fn_host);
-    }
-    CONDFREE(fujinet_target);
-    CONDFREE(fujinet_bootdump);
-    CONDFREE(fujinet_bootdir);
 
     if (gfx_init(&cfg->gfx, rx, ry, rd, cfg->gfx_flags, gfx_verbose,
                   cfg->prescale, bx, by, cfg->pal_mode, &cfg->avi,
@@ -1692,7 +1633,8 @@ skip_ecs:;
         exit(1);
     }
 
-    if (event_init(&cfg->event, enable_mouse, initial_event_map))
+    if (event_init(&cfg->event, enable_mouse, initial_event_map,
+                   &cfg->do_evt_map_chgd))
     {
         fprintf(stderr, "ERROR:  Failed to initialize event subsystem.\n");
         exit(1);
@@ -1861,18 +1803,6 @@ skip_ecs:;
         periph_register(P(jlp            ),  0x8000, 0x9FFF, "JLP Support"   );
 
     /* -------------------------------------------------------------------- */
-    /*  If the FujiNet mailbox is enabled, install its register window at   */
-    /*  $9C00 - $9FFF (FUJINET_WINDOW_SIZE in fujinet.h; must match).  This  */
-    /*  overlaps the tail of the JLP RAM window above -- don't combine      */
-    /*  --jlp and --fujinet in the same session.                            */
-    /* -------------------------------------------------------------------- */
-    if (fujinet_enable)
-    {
-        periph_register(P(fujinet        ),  0x9C00, 0x9FFF, "FujiNet"       );
-        cp1600_cacheable(&cfg->cp1600, 0x9C00, 0x9FFF, 0);
-    }
-
-    /* -------------------------------------------------------------------- */
     /*  Register the debugger.  This _must_ be done last.                   */
     /* -------------------------------------------------------------------- */
     if (cfg->debugging)
@@ -1895,7 +1825,7 @@ skip_ecs:;
     /* -------------------------------------------------------------------- */
     /*  Register the cheat engine if we have any cheats.                    */
     /* -------------------------------------------------------------------- */
-    if (cheat_count(&cfg->cheat))
+    if (cheat_active(&cfg->cheat))
         periph_register(P(cheat),  0x0000, 0x0000, "[Cheat]");
 
     /* -------------------------------------------------------------------- */

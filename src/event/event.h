@@ -19,6 +19,7 @@ typedef struct event_t
 {
     periph_t    periph;         /* Yes, it's a peripheral.  Surprise!       */
     evt_pvt_t  *pvt;            /* Private structure                        */
+    uint32_t    chg_evt_map;    /* Event map change request.                */
 } event_t;
 
 /* ======================================================================== */
@@ -26,9 +27,10 @@ typedef struct event_t
 /* ======================================================================== */
 int event_init
 (
-    event_t *const event,
-    const bool     enable_mouse,
-    const int      initial_event_map
+    event_t *const  event,
+    const bool      enable_mouse,
+    const int       initial_event_map,
+    uint32_t *const kbd_map_changed
 );
 
 /* ======================================================================== */

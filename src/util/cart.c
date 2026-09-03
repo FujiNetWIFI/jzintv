@@ -8,7 +8,7 @@
 #include "config.h"
 #include "cart.h"
 
-#if (!defined(PLAT_LINUX) && !defined(WIN32)) || !defined(i386)
+#if (!PLAT_LINUX && !PLAT_WIN32) || !defined(i386)
 void cr_set_disp(cart_rd_t *cr, unsigned display) { UNUSED(cr); UNUSED(display); }
 void cr_set_ctrl(cart_rd_t *cr, unsigned control) { UNUSED(cr); UNUSED(control); }
 void cr_set_data(cart_rd_t *cr, unsigned value) { UNUSED(cr); UNUSED(value); }

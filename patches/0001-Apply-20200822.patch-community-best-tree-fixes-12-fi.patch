@@ -1,0 +1,496 @@
+From 00abc489507240883b6647f1ffbc8c4932971cad Mon Sep 17 00:00:00 2001
+From: deck <jenergy@tiscali.it>
+Date: Tue, 11 Aug 2026 18:57:56 +0200
+Subject: [PATCH 1/7] Apply 20200822.patch: community best-tree fixes (12
+ files)
+
+---
+ src/asm/frasmain.c      | 37 +++++++++++++----
+ src/avi/avi.c           |  4 +-
+ src/config.h            |  4 +-
+ src/dasm/dis1600.c      | 90 ++++++++++++++++++++++++++++++++++++++++-
+ src/dasm/exec_interp.c  | 16 +++++++-
+ src/debug/debug.c       |  3 ++
+ src/file/elfi.c         |  6 +--
+ src/file/file.c         | 19 ++++++++-
+ src/imasm/parser.cpp    |  2 +-
+ src/metadata/metadata.c |  3 +-
+ src/snd/snd_sdl.c       | 10 +++++
+ src/stic/stic.c         |  4 ++
+ 12 files changed, 176 insertions(+), 22 deletions(-)
+
+diff --git a/src/asm/frasmain.c b/src/asm/frasmain.c
+index a68eebd..ca7110d 100644
+--- a/src/asm/frasmain.c
++++ b/src/asm/frasmain.c
+@@ -61,6 +61,7 @@ struct evalrel evalr[NUMPEXP];
+ 
+ //unsigned int memory_bitmap[65536 >> 5];
+ int show_map = FALSE;
++int silent = FALSE;
+ 
+ time_t asm_time = 0;
+ struct tm asm_time_local;
+@@ -85,6 +86,7 @@ LOCAL void usage(void)
+ "   -j <file>   --src-map=<file>      Specify source-map file\n"
+ "   -i <path>   --include=<path>      Append <path> to include path\n"
+ "   -m          --show-map            Summarize memory map after assembly\n"
++"   -q          --quiet               Hide non-error output\n"
+ "   -3   -c     --cc3                 Assemble .ROMs for CC3\n"
+ "   -h   -?     --help                Show this usage info\n"
+ "   -v          --version             Show assembler version\n"
+@@ -105,6 +107,7 @@ static struct option longopts[] =
+     { "list-file",          1,  NULL,   'l' },
+     { "out-file",           1,  NULL,   'o' },
+     { "show-map",           0,  NULL,   'm' },
++    { "quiet",              0,  NULL,   'q' },
+     { "sym-file",           1,  NULL,   's' },
+     { "src-map",            1,  NULL,   'j' },
+     { "version",            0,  NULL,   'v' },
+@@ -146,7 +149,7 @@ int asm_main(int argc, char *argv[])
+ 
+     grv = cpumatch(argv[0]);
+ 
+-    while( (grv = getopt_long(argc, argv, "mdj:o:l:s:p:i:c3v?he",
++    while( (grv = getopt_long(argc, argv, "mqdj:o:l:s:p:i:c3v?he",
+                               longopts, NULL)) != EOF)
+     {
+         switch(grv)
+@@ -181,6 +184,10 @@ int asm_main(int argc, char *argv[])
+             show_map = TRUE;
+             break;
+ 
++        case 'q':
++            silent = TRUE;
++            break;
++
+         case 'p':
+             if( ! cpumatch(optarg) )
+             {
+@@ -436,16 +443,30 @@ int asm_main(int argc, char *argv[])
+     if(errorcnt > 0)
+         hexvalid = FALSE;
+ 
+-    fprintf(loutf, " ERROR SUMMARY - ERRORS DETECTED %d\n", errorcnt);
+-    fprintf(loutf, "               -  WARNINGS       %d\n", warncnt);
+-    listlineno += 2;
++    if (errorcnt > 0 || !silent)
++    {
++        fprintf(loutf, " ERROR SUMMARY - ERRORS DETECTED %d\n", errorcnt);
++        listlineno++;
++    }
++
++    if (warncnt > 0 || !silent)
++    {
++        fprintf(loutf, "               -  WARNINGS       %d\n", warncnt);
++        listlineno++;
++    }
+ 
+     if(listflag)
+     {
+-        fprintf(stderr, " ERROR SUMMARY - ERRORS DETECTED %d\n",
+-            errorcnt);
+-        fprintf(stderr, "               -  WARNINGS       %d\n",
+-            warncnt);
++        if (errorcnt > 0 || !silent)
++        {
++            fprintf(stderr, " ERROR SUMMARY - ERRORS DETECTED %d\n",
++                errorcnt);
++        }
++        if (warncnt > 0 || !silent)
++        {
++            fprintf(stderr, "               -  WARNINGS       %d\n",
++                warncnt);
++        }
+     }
+ 
+     if(listflag)
+diff --git a/src/avi/avi.c b/src/avi/avi.c
+index 4cbbd9d..6a97861 100644
+--- a/src/avi/avi.c
++++ b/src/avi/avi.c
+@@ -1120,6 +1120,6 @@ void avi_set_time_scale( const double avi_time_scale_,
+     avi_time_scale         = avi_time_scale_ > 0.01 ? avi_time_scale_ : 1.0;
+     audio_time_scale       = incoming_audio_time_scale;
+     audio_time_scale_ratio = avi_time_scale / incoming_audio_time_scale;
+-    printf("AVI: %5.3f %5.3f %5.3f\n", avi_time_scale, audio_time_scale,
+-           audio_time_scale_ratio);
++    jzp_printf("AVI: %5.3f %5.3f %5.3f\n", avi_time_scale, audio_time_scale,
++               audio_time_scale_ratio);
+ }
+diff --git a/src/config.h b/src/config.h
+index 1971558..b89c6ce 100644
+--- a/src/config.h
++++ b/src/config.h
+@@ -294,7 +294,7 @@
+ #  define PLAT_WIN32 PLAT_WIN32_MINGW
+ # endif
+ 
+-#elif
++#else
+ # undef PLAT_GENERIC
+ # define PLAT_GENERIC (1)
+ #endif  /* Platform determination */
+@@ -363,7 +363,7 @@
+ #  define U64_FMT "I64u"
+ #  define X64_FMT "I64x"
+ # endif
+-# if !IS_MSVC
++# if PLAT_WIN32 != PLAT_WIN32_MSVC
+ #  define USE_STRCASECMP
+ #  define NEED_INOUT INOUT_GCC
+ # else
+diff --git a/src/dasm/dis1600.c b/src/dasm/dis1600.c
+index 3ddff88..e98e01d 100755
+--- a/src/dasm/dis1600.c
++++ b/src/dasm/dis1600.c
+@@ -383,21 +383,37 @@ int mark_interp(uint32_t addr, uint32_t flags, int len, const char *cmt)
+ {
+     int i;
+     int changed = 0;
++    int cur_len, max_len = 0x10000;
++
++    /* The emitter limits the length of decles and bidecles. */
++    if (flags & FLAG_DATA) {
++        max_len = 4;
++    }
++    else if (flags & FLAG_DBDATA) {
++        max_len = 2;
++    }
++
++    cur_len = (len > max_len) ? max_len : len;
+ 
+     for (i = 0; i < len; i++)
+     {
+         uint32_t old_flags = instr[addr + i].flags;
+ 
+         if (flags & MASK_DATA)
+-            instr[addr + 1].flags &= ~MASK_DATA;
++            instr[addr + i].flags &= ~MASK_DATA;
+ 
+         instr[addr + i].flags &= ~MASK_CODE;
+         instr[addr + i].flags |= flags | FLAG_INTERP | FLAG_INVOP;
+-        instr[addr + i].len    = len - i;
++        instr[addr + i].len    = cur_len;
+         instr[addr + i].cmt    = cmt;
+ 
+ //printf("addr=%.4X  flags %.8X to %.8X\n", addr, old_flags, instr[addr+i].flags);
+         changed += ((old_flags ^ instr[addr + i].flags) & (FLAG_INTERP|FLAG_INVOP)) != 0;
++
++        if (--cur_len == 0) {
++            int n_remaining = len - i - 1;
++            cur_len = (n_remaining > max_len) ? max_len : n_remaining;
++        }
+     }
+ 
+     return changed;
+@@ -1348,6 +1364,32 @@ LOCAL int find_funky_branches(void)
+         if (NOT_CODE(addr) || IS_BRANCH(addr))
+             continue;
+ 
++        if ( instr[addr].op1.type == OP_REG &&
++             instr[addr].op1.op   == 6      &&
++            (instr[addr].op1.flags & OPF_DST))
++        {
++            switch (instr[addr].mnemonic) {
++
++                case M_COMR:
++                case M_NEGR:
++                {
++                    if (suspicious_pc_math_is_invalid)
++                    {
++                        changed += mark_invalid(addr);
++                    }
++                    break;
++                }
++
++                case M_RSWD:    /* Treat RSWD R6 as always illegal, period */
++                {
++                    changed += mark_invalid(addr);
++                    break;
++                }
++            }
++
++            continue;
++        }
++
+         /* ---------------------------------------------------------------- */
+         /*  Check the first operand.  Only 1op Reg format can set this to   */
+         /*  "R7 is destination".                                            */
+@@ -1431,6 +1473,48 @@ LOCAL int find_funky_branches(void)
+         /* ---------------------------------------------------------------- */
+         /*  Check the second operand.                                       */
+         /* ---------------------------------------------------------------- */
++        if ( instr[addr].op2.type == OP_REG &&
++             instr[addr].op2.op   == 6      &&
++            ((instr[addr].op2.flags & (OPF_DST | OPF_IND)) == OPF_DST))
++        {
++            switch (instr[addr].mnemonic)
++            {
++                /* -------------------------------------------------------- */
++                /*  These are very suspicious.                              */
++                /* -------------------------------------------------------- */
++                case M_ANDI:
++                case M_AND:
++                case M_AND_:
++                case M_ANDR:
++                case M_XORI:
++                case M_XOR:
++                case M_XOR_:
++                case M_XORR:
++                {
++                    if (suspicious_pc_math_is_invalid)
++                    {
++                        changed += mark_invalid(addr);
++                    }
++
++                    break;
++                }
++
++                case M_ADDR:
++                {
++                    int reg1 = instr[addr].op1.type == OP_REG ?
++                                   instr[addr].op1.op : -1;
++                    if (suspicious_pc_math_is_invalid &&
++                        (reg1 == 6 || reg1 == 7))
++                    {
++                        changed += mark_invalid(addr);
++                    }
++
++                    break;
++                }
++            }
++            continue;
++        }
++
+         if ( instr[addr].op2.type == OP_REG &&
+              instr[addr].op2.op   == 7      &&
+             ((instr[addr].op2.flags & (OPF_DST | OPF_IND)) == OPF_DST))
+@@ -1860,6 +1944,7 @@ LOCAL int kill_bad_branches(void)
+         {
+             instr[addr].flags &= ~FLAG_BRTRG;
+             free(instr[addr].target_of);
++            instr[addr].target_of = NULL;
+             instr[addr].tg_of_cnt = 0;
+             instr[addr].tg_of_max = 0;
+         }
+@@ -2217,6 +2302,7 @@ LOCAL void mark_data(void)
+     {
+         if ((instr[addr].flags & MASK_DATA) == FLAG_DBDATA &&
+             ((GET_WORD(addr) & 0xFF00) != 0 ||
++             (GET_WORD(addr+1) & 0xFF00) != 0 ||
+              (instr[addr+1].flags & MASK_DATA) != FLAG_DBDATA))
+         {
+             instr[addr].flags &= ~MASK_DATA;
+diff --git a/src/dasm/exec_interp.c b/src/dasm/exec_interp.c
+index 2e1d62f..907bb52 100644
+--- a/src/dasm/exec_interp.c
++++ b/src/dasm/exec_interp.c
+@@ -298,7 +298,7 @@ int decode_timer_table(uint32_t addr)
+     if (!no_default_symbols)
+         maybe_defsym(".TIMER", addr);
+ 
+-    for (; GET_WORD(addr) != 0; addr += 4)
++    for (; GET_DWORD(addr) != 0; addr += 4)
+     {
+         changed += mark_interp(addr, FLAG_DBDATA, 4, "Timer dispatch/interval");
+         for (i = 0; i < 4; i++)
+@@ -325,6 +325,13 @@ int mark_cart_header_pre(void)
+     int changed = 0;
+     int after_title_addr = 0;
+ 
++    if (IS_EMPTY(0x5000)) {
++        /* There is no cartridge header.
++         * We are probably diassembling the EXEC or some such.
++         */
++        return 0;
++    }
++
+     /* -------------------------------------------------------------------- */
+     /*  First, prep the header to be marked as 'data' of various sorts.     */
+     /* -------------------------------------------------------------------- */
+@@ -462,6 +469,13 @@ int mark_cart_header_post(void)
+ {
+     int changed = 0;
+ 
++    if (IS_EMPTY(0x5000) || IS_EMPTY(0x5006)) {
++        /* There is no cartridge header.
++         * We are probably diassembling the EXEC or some such.
++         */
++        return 0;
++    }
++
+     changed += decode_gfx_list(GET_DWORD(0x5006));
+ 
+     return changed;
+diff --git a/src/debug/debug.c b/src/debug/debug.c
+index 738510f..5e05b58 100644
+--- a/src/debug/debug.c
++++ b/src/debug/debug.c
+@@ -213,6 +213,8 @@ LOCAL void debug_print_usage(void)
+ ">> with the 'L'oad command shown above\n"
+ "\n"
+     );
++
++    jzp_flush();
+ }
+ 
+ /* ======================================================================== */
+@@ -1095,6 +1097,7 @@ uint32_t debug_tk(periph_t *p, uint32_t len)
+                     debug_format_addr(debug, ni_start, pcbuf0, sizeof(pcbuf0)),
+                     debug_format_addr(debug, ni_end, pcbuf1, sizeof(pcbuf1)),
+                     ni_cycle);
++                jzp_flush();
+             }
+ 
+             non_int = 0;
+diff --git a/src/file/elfi.c b/src/file/elfi.c
+index acf8e5d..77b77d9 100644
+--- a/src/file/elfi.c
++++ b/src/file/elfi.c
+@@ -62,15 +62,15 @@ int elfi_init(const char *elfi_prefix)
+     elfi_fname     = (char *)malloc(strlen(elfi_prefix) + MAX_ELFI_FNAME + 2);
+     elfi_fname_end = elfi_fname + prefix_len;
+ 
+-    memcpy(elfi_fname, elfi_prefix, prefix_len);
+-    *elfi_fname_end++ = PATH_SEP;
+-
+     if (!elfi_fname)
+     {
+         fprintf(stderr, "elfi:  Out of memory\n");
+         return -1;
+     }
+ 
++    memcpy(elfi_fname, elfi_prefix, prefix_len);
++    *elfi_fname_end++ = PATH_SEP;
++
+     for (i = 0; i < MAX_ELFI_FD; i++)
+         fd_map[i] = 0;
+ 
+diff --git a/src/file/file.c b/src/file/file.c
+index 201b05f..7d84d6b 100644
+--- a/src/file/file.c
++++ b/src/file/file.c
+@@ -236,12 +236,17 @@ int is_absolute_path(const char *fname)
+     if (fname[0] == PATH_SEP)
+         return 1;
+ 
++    /* PATH_SEP is backslash on PLAT_WIN32, but allow forward slash as well. */
++    if (PLAT_WIN32 && fname[0] == '/')
++        return 1;
++
+     if ( has_lzoe_prefix( fname ) )
+         return 1;
+ 
+     /* Look for a drive letter */
+     if (PLAT_WIN32 &&
+-        isalpha(fname[0]) && fname[1] == ':' && fname[2] == PATH_SEP)
++        isalpha(fname[0]) && fname[1] == ':' &&
++        (fname[2] == PATH_SEP || fname[2] == '/'))
+         return 1;
+ 
+     /* Look for a prefix of the form "VOL:".  Allow everything but the      */
+@@ -635,12 +640,18 @@ macosx_fail:
+ 
+     if (PLAT_WIN32)
+     {
++        if (argv0[0] == '/')
++        {
++            new_exe_path = strdup(argv0);
++            goto got_exe_path;
++        }
++
+         if (strlen(argv0) > 3 && isalpha(argv0[0]) && argv0[1] == ':')
+         {
+             /* ------------------------------------------------------------ */
+             /*  Common case: C:\path\to\jzintv.exe                          */
+             /* ------------------------------------------------------------ */
+-            if (argv0[2] == PATH_SEP)
++            if (argv0[2] == PATH_SEP || argv0[2] == '/')
+             {
+                 new_exe_path = strdup(argv0);
+                 goto got_exe_path;
+@@ -745,6 +756,10 @@ got_exe_path:
+     /*  Possible late failure mode: We can't find PATH_SEP.                 */
+     /* -------------------------------------------------------------------- */
+     s = strrchr(new_exe_path, PATH_SEP);
++    if (PLAT_WIN32 && !s)
++    {
++        s = strrchr(new_exe_path, '/');
++    }
+     if (!s)
+     {
+         free(new_exe_path);
+diff --git a/src/imasm/parser.cpp b/src/imasm/parser.cpp
+index fe98ad7..8e715f6 100644
+--- a/src/imasm/parser.cpp
++++ b/src/imasm/parser.cpp
+@@ -203,7 +203,7 @@ int Parser::ParseLine(string &sLine)
+     // Massacre any comments to keep them from mucking up the works
+     string::size_type iPos = sLine.find(";");
+     if (iPos != string::npos)
+-        sLine.substr(0, iPos);
++        (void)sLine.substr(0, iPos);
+ 
+     // Now, through the magic of operator overloading, tokenize the line.
+     lineToks = sLine;
+diff --git a/src/metadata/metadata.c b/src/metadata/metadata.c
+index 52a6093..e13633f 100644
+--- a/src/metadata/metadata.c
++++ b/src/metadata/metadata.c
+@@ -68,7 +68,8 @@ int game_metadata_set_unspec_compat_to_defaults
+         }
+ 
+         /* The name JLP_ACCEL_OFF kinda sucks. */
+-        if ( game_metadata->jlp_flash > 0 )
++        if ( game_metadata->jlp_flash > 0 &&
++             game_metadata->jlp_accel != JLP_ACCEL_OFF)
+             game_metadata->jlp_accel =
+                 game_metadata->jlp_accel == JLP_DISABLED ? JLP_ACCEL_OFF
+                                                          : JLP_ACCEL_FLASH_ON;
+diff --git a/src/snd/snd_sdl.c b/src/snd/snd_sdl.c
+index fc83da1..3798d20 100644
+--- a/src/snd/snd_sdl.c
++++ b/src/snd/snd_sdl.c
+@@ -559,6 +559,16 @@ LOCAL const char *snd_fmt_name(uint16_t fmt)
+         :  fmt == AUDIO_S16LSB  ? "Signed 16-bit (LSB first)"
+         :  fmt == AUDIO_S16MSB  ? "Signed 16-bit (MSB first)"
+         :  fmt == AUDIO_S16     ? "Signed 16-bit (LSB first?)"
++#if USE_SDL == 2
++        :  fmt == AUDIO_S32SYS  ? "Signed 32-bit (native)"
++        :  fmt == AUDIO_S32LSB  ? "Signed 32-bit (LSB first)"
++        :  fmt == AUDIO_S32MSB  ? "Signed 32-bit (MSB first)"
++        :  fmt == AUDIO_S32     ? "Signed 32-bit (?SB first)"
++        :  fmt == AUDIO_F32SYS  ? "Float 32-bit (native)"
++        :  fmt == AUDIO_F32LSB  ? "Float 32-bit (LSB first)"
++        :  fmt == AUDIO_F32MSB  ? "Float 32-bit (MSB first)"
++        :  fmt == AUDIO_F32     ? "Float 32-bit (?SB first)"
++#endif
+         :                         "Unknown";
+ }
+ 
+diff --git a/src/stic/stic.c b/src/stic/stic.c
+index a992686..3450a5e 100644
+--- a/src/stic/stic.c
++++ b/src/stic/stic.c
+@@ -241,6 +241,8 @@ LOCAL uint32_t stic_ctrl_rd(periph_t *const per, periph_t *const req,
+ */
+                 stic->debug_flags |= STIC_DBG_CTRL_ACCESS_WINDOW;
+             }
++
++            jzp_flush();
+         }
+ 
+         return addr < 0x80 ? 0x000E & addr : 0xFFFF;
+@@ -434,6 +436,8 @@ LOCAL void stic_ctrl_wr(periph_t *const per, periph_t *const req,
+ */
+                 stic->debug_flags |= STIC_DBG_CTRL_ACCESS_WINDOW;
+             }
++
++            jzp_flush();
+         }
+         return;
+     }
+-- 
+2.47.1
+

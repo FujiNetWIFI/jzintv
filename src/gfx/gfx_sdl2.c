@@ -32,10 +32,7 @@
 #include "avi/avi.h"
 #include "lzoe/lzoe.h"
 #include "file/file.h"
-
-#ifdef PLAT_MACOS
-#include "gfx/gfx_sdl2_osx.h"
-#endif
+#include "gfx/gfx_sdl2_hooks.h"
 
 const double frame_delta = 0.0166;  /* Slightly faster than 60Hz.           */
 
@@ -328,6 +325,9 @@ LOCAL int gfx_setup_sdl_display
     SDL_GetRendererInfo(rend, &rend_info);
     const uint32_t act_wind_flags = SDL_GetWindowFlags(wind);
     const uint32_t act_rend_flags = rend_info.flags;
+    const bool is_vsynced    = act_rend_flags & SDL_RENDERER_PRESENTVSYNC;
+    const bool is_soft_rend  = act_rend_flags & SDL_RENDERER_SOFTWARE;
+    const bool is_fullscreen = act_wind_flags & SDL_WINDOW_FULLSCREEN;
 
     gfx->pvt->wind  = wind;
     gfx->pvt->rend  = rend;
@@ -348,24 +348,19 @@ LOCAL int gfx_setup_sdl_display
            "gfx:      VSync: %s, Rend: %s, Windowed: %s\n"
            "gfx:      Video Driver: '%s', Render Driver: '%s'\n",
            wind_x, wind_y, gfx->pvt->bpp,
-           act_rend_flags & SDL_RENDERER_PRESENTVSYNC ? "Yes"      : "No",
-           act_rend_flags & SDL_RENDERER_SOFTWARE     ? "Software" : "Hardware",
-           act_wind_flags & SDL_WINDOW_FULLSCREEN     ? "No"       : "Yes",
+           is_vsynced    ? "Yes"      : "No",
+           is_soft_rend  ? "Software" : "Hardware",
+           is_fullscreen ? "No"       : "Yes",
            SDL_GetCurrentVideoDriver(), rend_info.name);
     }
 
-#if defined(PLAT_MACOS) && defined(USE_SDL2)
     /* -------------------------------------------------------------------- */
-    /*  SDL2 2.0.12 and prior do not set a colorspace.  This occasionally   */
-    /*  causes problems with dragging a window between desktops on OS/X.    */
+    /*  SDL2, at least through 2.0.12, do not set a colorspace in OS/X w/   */
+    /*  Metal. This occasionally causes problems with dragging a window     */
+    /*  between displays.  Use a generic hook to request sRGB colorspace.   */
     /* -------------------------------------------------------------------- */
-    void *metal_layer = SDL_RenderGetMetalLayer(rend);
-    if (metal_layer &&
-        gfx_set_srgb_colorspace(metal_layer))
-    {
-        jzp_printf("gfx:  Manually set sRGB colorspace on Metal layer.\n");
-    }
-#endif
+    if (gfx_set_srgb_colorspace(rend))
+        jzp_printf("gfx:  Manually set sRGB colorspace in renderer.\n");
 
     /* -------------------------------------------------------------------- */
     /*  TEMPORARY: Verify that the surface's format is as we expect.  This  */
@@ -419,16 +414,26 @@ LOCAL int gfx_setup_sdl_display
     /* -------------------------------------------------------------------- */
     /*  Hide the mouse if full screen.                                      */
     /* -------------------------------------------------------------------- */
-    SDL_ShowCursor(
-        SDL_GetNumVideoDisplays() == 1 &&
-        (act_wind_flags & SDL_WINDOW_FULLSCREEN) ? SDL_DISABLE : SDL_ENABLE);
+    if (PLAT_LINUX == PLAT_LINUX_TERMUX)
+        SDL_ShowCursor(SDL_DISABLE);
+    else
+        SDL_ShowCursor(
+            is_fullscreen &&
+            SDL_GetNumVideoDisplays() == 1 ? SDL_DISABLE : SDL_ENABLE);
 
     SDL_PumpEvents();
     SDL_ShowWindow(gfx->pvt->wind);
     SDL_RaiseWindow(gfx->pvt->wind);
 
-    if (!(act_wind_flags & SDL_WINDOW_FULLSCREEN))
-        SDL_SetWindowBordered(gfx->pvt->wind, SDL_TRUE);
+#if defined(X11_TRANSIENT_WORKAROUND)
+    jzp_printf("gfx:  X11_TRANSIENT_WORKAROUND is set.  is_fullscreen=%d\n",
+               is_fullscreen);
+#else
+    jzp_printf("gfx:  X11_TRANSIENT_WORKAROUND is not set.  is_fullscreen=%d\n",
+               is_fullscreen);
+#endif
+    if (!is_fullscreen)
+        gfx_set_window_bordered(gfx->pvt->wind, SDL_TRUE);
 
     return 0;
 }
@@ -764,14 +769,15 @@ bool gfx_toggle_windowed(gfx_t *gfx, int quiet)
         pvt->flags = new_flags;
 
         SDL_ShowCursor(
-            SDL_GetNumVideoDisplays() == 1 &&
-            new_fullsc ? SDL_DISABLE : SDL_ENABLE);
+            PLAT_LINUX == PLAT_LINUX_TERMUX ||
+            (SDL_GetNumVideoDisplays() == 1 && new_fullsc) ? SDL_DISABLE 
+                                                           : SDL_ENABLE);
 
         SDL_PumpEvents();
         SDL_ShowWindow(pvt->wind);
         SDL_RaiseWindow(pvt->wind);
         if (!new_fullsc)    /* Needed on w32 SDL2, apparently? */
-            SDL_SetWindowBordered(pvt->wind, SDL_TRUE);
+            gfx_set_window_bordered(pvt->wind, SDL_TRUE);
 
         const int text_x = pvt->scaler.actual_x;
         const int text_y = pvt->scaler.actual_y;

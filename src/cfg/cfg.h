@@ -66,7 +66,6 @@ typedef struct cfg_t
     legacy_t    legacy;         /* Legacy BIN+CFG game program              */
     ecs_t       ecs;            /* Entertainment Computer System (ECS)      */
     jlp_t       jlp;            /* Jean-Luc Project Support                 */
-    fujinet_t   fujinet;        /* FujiNet mailbox (BoIP client)            */
     t_locutus_wrap locutus;
 
     uint16_t    exec_img[4096 + 4096];
@@ -113,7 +112,7 @@ typedef struct cfg_t
     uint32_t  do_dump;          /* Signal that we'd like to save a game     */
     uint32_t  do_load;          /* Signal that we'd like to load a game     */
     uint32_t  do_reload;        /* Signal we'd like to reload jzIntv        */
-    uint32_t  chg_evt_map;      /* Change the current input event map.      */
+    uint32_t  do_evt_map_chgd;  /* Signal that active event map changed.    */
 
     /* -------------------------------------------------------------------- */
     /*  Key bindings                                                        */

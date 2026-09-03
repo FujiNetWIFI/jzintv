@@ -138,18 +138,6 @@ int icart_init
 );
 
 /* ======================================================================== */
-/*  ICART_INIT_MEM    -- Initialize an Intellicart from a ROM image that's  */
-/*                       already in memory (no file involved).              */
-/* ======================================================================== */
-int icart_init_mem
-(
-    icart_t       *const ic,
-    const uint8_t *const img,
-    long           const size,
-    int            const randomize
-);
-
-/* ======================================================================== */
 /*  ICART_REGISTER   -- The Intellicart is unique in that it will register  */
 /*                      itself on the peripheral bus.                       */
 /* ======================================================================== */
@@ -159,26 +147,6 @@ int icart_register
     periph_bus_t *const bus,
     cp1600_t     *const cpu,
     uint32_t      const cache_flags
-);
-
-/* ======================================================================== */
-/*  ICART_UNREGISTER -- Undoes icart_register()'s address decode bindings,  */
-/*                      every attribute flavor of them.                     */
-/*                                                                          */
-/*                      Only needed when the same icart_t gets re-          */
-/*                      registered over a different memory map, i.e. the    */
-/*                      FujiNet hot-swap in fujinet_apply_rom().  Without   */
-/*                      it the previous cart's ranges keep answering        */
-/*                      alongside the new ones, and since the Intellivision */
-/*                      bus is wire-AND, the CPU sees the AND of the two --  */
-/*                      the FujiNet config ROM's 8-bit RAM window at        */
-/*                      $8000-$9BFF quietly truncating a pushed game's      */
-/*                      16-bit ROM in the same range.                       */
-/* ======================================================================== */
-void icart_unregister
-(
-    icart_t      *const ic,
-    periph_bus_t *const bus
 );
 
 #endif

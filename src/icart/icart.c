@@ -201,35 +201,25 @@ LOCAL void icart_dtor(periph_t *const p)
 }
 
 /* ======================================================================== */
-/*  ICART_INIT_MEM    -- Initialize the Intellicart w/ a ROM image already  */
-/*                       sitting in memory.  This is the common core of     */
-/*                       ICART_INIT (below), factored out so that ROM       */
-/*                       images that don't come from a file -- e.g. the     */
-/*                       embedded FujiNet config ROM -- can share it        */
-/*                       rather than needing a fake file wrapper.           */
+/*  ICART_INIT       -- Initialize the Intellicart w/ a ROM image.          */
 /* ======================================================================== */
-int icart_init_mem
+int icart_init
 (
-    icart_t       *const ic,
-    const uint8_t *const img,
-    long           const size,
-    int            const randomize
+    icart_t *const ic,
+    LZFILE  *const rom,
+    int      const randomize
 )
 {
+    uint8_t    *rom_img;
     periph_t   *p[12];
+    long        size;
     int         err;
 
     /* -------------------------------------------------------------------- */
     /*  Sanity checks.                                                      */
     /* -------------------------------------------------------------------- */
-    if (!ic || !img)
+    if (!ic || !rom)
         return -1;
-
-    if (size <= 52)
-    {
-        fprintf(stderr, "icart:  Short image?\n");
-        return -1;
-    }
 
     /* -------------------------------------------------------------------- */
     /*  Clean things up.                                                    */
@@ -283,13 +273,35 @@ int icart_init_mem
     }
 
     /* -------------------------------------------------------------------- */
-    /*  Decode the in-memory ROM image.                                     */
+    /*  Now, read in the .ROM file.                                         */
     /* -------------------------------------------------------------------- */
-    if ((err = icartrom_decode(&(ic->rom), img, size, 0, 0)) < 0)
+    size = file_length(rom);
+    if (size <= 52)
+    {
+        fprintf(stderr, "icart:  Short file?\n");
+        return -1;      /* Short file, or seek failed */
+    }
+
+    if ((rom_img = CALLOC(uint8_t, size)) == NULL)
+    {
+        fprintf(stderr, "icart:  Out of memory.\n");
+        return -1;
+    }
+
+    lzoe_rewind(rom);
+    if ((long)lzoe_fread(rom_img, 1, size, rom) != size)
+    {
+        fprintf(stderr, "icart:  Short read while reading ROM.\n");
+        return -1;
+    }
+
+    if ((err = icartrom_decode(&(ic->rom), rom_img, size, 0, 0)) < 0)
     {
         fprintf(stderr, "icart:  Error %d while decoding ROM.\n", -err);
         return -1;
     }
+
+    free(rom_img);
 
     /* -------------------------------------------------------------------- */
     /*  Base Intellicart peripheral, responsible for cleanup.               */
@@ -316,56 +328,6 @@ int icart_init_mem
             icart_wr_bs(AS_PERIPH(ic), NULL, i, rand_jz());
 
     return 0;
-}
-
-/* ======================================================================== */
-/*  ICART_INIT       -- Initialize the Intellicart w/ a ROM image, read     */
-/*                      from an (LZOE-transparent) file.  Thin wrapper      */
-/*                      around ICART_INIT_MEM that does the file I/O.       */
-/* ======================================================================== */
-int icart_init
-(
-    icart_t *const ic,
-    LZFILE  *const rom,
-    int      const randomize
-)
-{
-    uint8_t    *rom_img;
-    long        size;
-    int         err;
-
-    if (!ic || !rom)
-        return -1;
-
-    /* -------------------------------------------------------------------- */
-    /*  Read in the .ROM file.                                              */
-    /* -------------------------------------------------------------------- */
-    size = file_length(rom);
-    if (size <= 52)
-    {
-        fprintf(stderr, "icart:  Short file?\n");
-        return -1;      /* Short file, or seek failed */
-    }
-
-    if ((rom_img = CALLOC(uint8_t, size)) == NULL)
-    {
-        fprintf(stderr, "icart:  Out of memory.\n");
-        return -1;
-    }
-
-    lzoe_rewind(rom);
-    if ((long)lzoe_fread(rom_img, 1, size, rom) != size)
-    {
-        fprintf(stderr, "icart:  Short read while reading ROM.\n");
-        free(rom_img);
-        return -1;
-    }
-
-    err = icart_init_mem(ic, rom_img, size, randomize);
-
-    free(rom_img);
-
-    return err;
 }
 
 /* ======================================================================== */
@@ -505,34 +467,6 @@ int icart_register
                     ic->base.addr_base + ic->base.addr_mask, name);
 
     return 0;
-}
-
-/* ======================================================================== */
-/*  ICART_UNREGISTER -- Undoes icart_register()'s address decode bindings.  */
-/*                      See icart.h for why.                                */
-/* ======================================================================== */
-void icart_unregister
-(
-    icart_t      *const ic,
-    periph_bus_t *const bus
-)
-{
-    if (!ic || !bus)
-        return;
-
-    /*  Same set icart_register() picks from, plus the base/bankswitch      */
-    /*  peripheral it always registers.                                     */
-    periph_t *const p[13] =
-    {
-        &(ic->base),
-        &(ic->r),   &(ic->w),   &(ic->rw),
-        &(ic->rn),  &(ic->wn),  &(ic->rwn),
-        &(ic->rb),  &(ic->wb),  &(ic->rwb),
-        &(ic->rnb), &(ic->wnb), &(ic->rwnb)
-    };
-
-    for (unsigned i = 0; i < sizeof(p) / sizeof(p[0]); i++)
-        periph_unregister(bus, p[i]);
 }
 
 /* ======================================================================== */

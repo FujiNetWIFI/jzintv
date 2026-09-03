@@ -16,7 +16,7 @@
 
 #ifdef DIRECT_INTV2PC
 # include <unistd.h>
-# ifndef WIN32
+# if !PLAT_WIN32
 #  include <sys/io.h>
 # endif
 # include "periph/periph.h"
@@ -98,21 +98,12 @@ int plat_init(void)
 
     atexit(plat_quit);
 
-#if defined(GP2X)
-    {
-        extern void gp2x_init(void);
-        gp2x_init();
-    }
-#endif
+    /* -------------------------------------------------------------------- */
+    /*  Allow targets to define an external init function in plat.h.        */
+    /* -------------------------------------------------------------------- */
+    plat_extern_init();
 
-#if defined(WII)
-    {
-        extern void wii_init(void);
-        wii_init();
-    }
-#endif
-
-#if defined(DIRECT_INTV2PC) && !defined(WIN32)
+#if defined(DIRECT_INTV2PC) && !PLAT_WIN32
     /* -------------------------------------------------------------------- */
     /*  If direct hand-controller interface support is compiled in, try     */
     /*  to give ourself permission to the printer-port I/O address ranges.  */
@@ -129,10 +120,9 @@ int plat_init(void)
     }
 #endif
 
-#if defined(DIRECT_INTV2PC) && defined(WIN32)
+#if defined(DIRECT_INTV2PC) && PLAT_WIN32
     pads_intv2pc_ports_ok = 7;
 #endif
-
 
 #ifndef NO_SETUID
     /* -------------------------------------------------------------------- */

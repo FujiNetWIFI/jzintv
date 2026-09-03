@@ -1,0 +1,428 @@
+From a14df4173b6807fd304ac480794f87e2313d69a8 Mon Sep 17 00:00:00 2001
+From: deck <jenergy@tiscali.it>
+Date: Thu, 13 Aug 2026 16:08:47 +0200
+Subject: [PATCH 6/7] Add sprint target: cross-compile ARM (Intellivision
+ Sprint) into update.zip
+
+---
+ .gitignore                |   1 +
+ ReleaseNotes_20260813.txt |  53 ++++++++----
+ build.sh                  |  87 ++++++++++++++++++-
+ src/Makefile.sprint       | 171 ++++++++++++++++++++++++++++++++++++++
+ 4 files changed, 292 insertions(+), 20 deletions(-)
+ create mode 100644 src/Makefile.sprint
+
+diff --git a/.gitignore b/.gitignore
+index 60aaf77..60a23e7 100644
+--- a/.gitignore
++++ b/.gitignore
+@@ -10,6 +10,7 @@
+ # Build outputs (bin/<platform>/) and vendored deps: not versioned
+ /bin/linux/
+ /bin/windows/
++/bin/sprint/
+ /build-support/
+ *.exe
+ 
+diff --git a/ReleaseNotes_20260813.txt b/ReleaseNotes_20260813.txt
+index 06ea5c9..959e05c 100644
+--- a/ReleaseNotes_20260813.txt
++++ b/ReleaseNotes_20260813.txt
+@@ -45,14 +45,27 @@ here are downstream additions and are not an official jzIntv release.
+ ----------
+ 
+ *   Build:
+-    *   New  build.sh  convenience script that builds the Linux and Windows
+-        executables into  bin/<platform>/  (release, stripped, LTO).  It
+-        prefers the system SDL2 (sdl2-config / pkg-config) and cross-compiles
+-        Windows with MinGW-w64.  In "all", a target whose toolchain is absent
+-        is skipped rather than failing the whole build.
++    *   New  build.sh  convenience script that builds the Linux, Windows and
++        Sprint executables into  bin/<platform>/  (release, stripped, LTO).
++        It prefers the system SDL2 (sdl2-config / pkg-config), cross-compiles
++        Windows with MinGW-w64, and cross-compiles the ARM "Sprint" target
++        with the arm-linux-gnueabihf toolchain.  Targets whose toolchain is
++        absent are skipped rather than failing the whole build.
+     *   New  package-release.sh  script that zips the redistributable (the
+         git-tracked GPL source plus the built binaries) into a single archive,
+         excluding the vendored build-support/ and any copyrighted material.
++    *   New Sprint target (Intellivision Sprint, ARM 32-bit armhf) with
++        Makefile.sprint.  It packages the ARM jzintv into an  update.zip  by
++        swapping the emulator inside a base update package.
++
++
++-------------------------
++ Cleanups and bug fixes:
++-------------------------
++
++*   Makefile.sprint:  define  -DUSE_SDL=2  (not  -DUSE_SDL2 ), so sdl_jzintv.h
++    actually includes the SDL2 headers and the ARM target compiles, matching
++    the Linux and Windows Makefiles.
+ 
+ 
+ -----------------------
+@@ -61,11 +74,11 @@ here are downstream additions and are not an official jzIntv release.
+ 
+ Use the build.sh script at the top of the tree:
+ 
+-    ./build.sh [linux|windows|all]        (default: all)
++    ./build.sh [linux|windows|sprint|all]        (default: all)
+ 
+-Outputs go to bin/<platform>/  :  bin/linux/jzintv, bin/windows/jzintv.exe.
+-Builds are release, stripped, LTO.  In "all", a target whose toolchain is
+-missing is skipped, not fatal.
++Outputs go to bin/<platform>/  :  bin/linux/jzintv, bin/windows/jzintv.exe,
++bin/sprint/jzintv (+ update.zip).  Builds are release, stripped, LTO.  In
++"all", a target whose toolchain is missing is skipped, not fatal.
+ 
+ What each target needs:
+ 
+@@ -79,10 +92,18 @@ What each target needs:
+                 $SDL2_MINGW_PREFIX, or build-support/sdl2-mingw/, or is auto-
+                 downloaded from libsdl.org (needs curl or wget).
+ 
+-The build-support/ directory (vendored SDL2 dev files) is OPTIONAL: build.sh
+-prefers system packages and only falls back to it.  If a required piece is
+-missing, build.sh stops with a clear message telling you which package to
+-install or which variable to set -- it never fails silently.
+-
+-Environment knobs:  CC, CXX, MINGW, SDL2_VERSION, SDL2_MINGW_PREFIX, STRIP,
+-JOBS.  See the header of build.sh for details.
++*   sprint   -- the ARM cross-compiler (arm-linux-gnueabihf-gcc/g++, e.g. from
++                crossbuild-essential-armhf) with libsdl2-dev:armhf, plus zip.
++                On distros without armhf, build it inside a Debian container.
++                update.zip is assembled from a base template resolved from
++                $SPRINT_ZIP_TEMPLATE, build-support/sprint/, or ../sprint/.
++                NOTE: that template holds copyrighted BIOS + game ROMs and is
++                NOT redistributable -- supply your own official update.zip.
++
++The build-support/ directory (vendored SDL2 dev files + the Sprint template)
++is OPTIONAL: build.sh prefers system packages and only falls back to it.  If
++a required piece is missing, build.sh stops with a clear message telling you
++which package to install or which variable to set -- it never fails silently.
++
++Environment knobs:  CC, CXX, MINGW, ARM_CROSS, SDL2_VERSION, SDL2_MINGW_PREFIX,
++SPRINT_ZIP_TEMPLATE, STRIP, JOBS.  See the header of build.sh for details.
+diff --git a/build.sh b/build.sh
+index 5aa6e86..5ebb79a 100755
+--- a/build.sh
++++ b/build.sh
+@@ -1,13 +1,14 @@
+ #!/usr/bin/env bash
+ #
+-# build.sh - Build jzIntv for Linux and/or Windows.
++# build.sh - Build jzIntv for Linux, Windows and/or Sprint.
+ #
+ # Executables end up in bin/<platform>/ :
+ #     bin/linux/jzintv
+ #     bin/windows/jzintv.exe  (+ SDL2.dll, libwinpthread-1.dll)
++#     bin/sprint/jzintv        (+ update.zip)
+ #
+ # Usage:
+-#     ./build.sh [linux|windows|all]      (default: all)
++#     ./build.sh [linux|windows|sprint|all]      (default: all)
+ #
+ # Designed to be GENERIC (any Linux distro):
+ #   * Linux   -> uses the system SDL2 via sdl2-config/pkg-config.  If the dev
+@@ -16,12 +17,20 @@
+ #   * Windows -> cross-compiles with MinGW-w64.  The SDL2-MinGW dev files are
+ #                taken, in order, from $SDL2_MINGW_PREFIX, the bundle in
+ #                build-support/sdl2-mingw/, or downloaded from libsdl.org.
++#   * Sprint  -> Intellivision Sprint: cross-compiles ARM 32-bit (armhf) with
++#                the arm-linux-gnueabihf-* toolchain (Makefile.sprint) and packs
++#                the executable into bin/sprint/update.zip.  Needs the ARM
++#                toolchain in PATH (native on Debian, or inside a Debian
++#                container on SteamOS) + libsdl2-dev:armhf + zip.  In 'all' it
++#                is skipped when the ARM toolchain is absent.
+ #
+ # Optional environment variables:
+ #     CC, CXX            Linux compilers              (default gcc / g++)
+ #     MINGW              MinGW triplet                (default x86_64-w64-mingw32)
+ #     SDL2_MINGW_PREFIX  SDL2 mingw dir (include/lib) (else bundle/download)
+ #     SDL2_VERSION       SDL2 version to download     (default 2.32.8)
++#     ARM_CROSS          ARM toolchain prefix         (default arm-linux-gnueabihf-)
++#     SPRINT_ZIP_TEMPLATE base update.zip for Sprint  (else build-support/../sprint)
+ #     GNU_READLINE       1 to enable readline         (default 0)
+ #     STRIP              0 to NOT strip               (default 1)
+ #     JOBS               make parallelism             (default: nproc)
+@@ -39,6 +48,7 @@ TARGET="${1:-all}"
+ CC="${CC:-gcc}"
+ CXX="${CXX:-g++}"
+ MINGW="${MINGW:-x86_64-w64-mingw32}"
++ARM_CROSS="${ARM_CROSS:-arm-linux-gnueabihf-}"
+ SDL2_VERSION="${SDL2_VERSION:-2.32.8}"
+ GNU_READLINE="${GNU_READLINE:-0}"
+ STRIP="${STRIP:-1}"
+@@ -155,6 +165,72 @@ build_windows() {
+     ok "-> bin/windows/jzintv.exe  ($(du -h "$BIN/windows/jzintv.exe" | cut -f1))  + DLLs"
+ }
+ 
++# ===========================================================================
++#  SPRINT  (Intellivision Sprint: cross-compile ARM 32-bit armhf -> update.zip)
++# ===========================================================================
++build_sprint() {
++    log "Build Sprint (Intellivision Sprint, ARM 32-bit armhf) + update.zip"
++    local pfx="$ARM_CROSS"
++    local acc="${pfx}gcc" acxx="${pfx}g++" astrip="${pfx}strip"
++    have "$acc" || die "ARM cross-compiler '$acc' not found.  Sprint needs an ARM
++(armhf) toolchain, which is not installed by default on SteamOS/Arch.  Two ways:
++
++  A) Debian/Ubuntu (native):
++       sudo dpkg --add-architecture armhf && sudo apt update
++       sudo apt install -y crossbuild-essential-armhf libsdl2-dev:armhf make zip
++       ./build.sh sprint
++
++  B) SteamOS/Arch (or any distro without armhf) -> throwaway Debian container:
++     one line, from the repo directory (outputs stay owned by your user):
++       podman run --rm -v \"\$PWD\":/work -w /work docker.io/library/debian:bullseye bash -c \\
++         'dpkg --add-architecture armhf; apt-get update -q; apt-get install -y \\
++          --no-install-recommends crossbuild-essential-armhf libsdl2-dev:armhf make zip \\
++          unzip pkg-config ca-certificates; ./build.sh sprint'
++
++     Persistent (distrobox): distrobox create --name arm-sdl2 --image debian:bullseye ;
++       distrobox enter arm-sdl2 ; the apt commands from A ; ./build.sh sprint"
++    have "$acxx" || die "'$acxx' not found"
++    have make    || die "'make' not found"
++    { have zip && have unzip; } || die "'zip' and 'unzip' are required to build update.zip"
++    [ -f "$SRC/Makefile.sprint" ] || die "src/Makefile.sprint is missing"
++
++    # SDL2 armhf: Makefile.sprint locates it via pkg-config with the armhf PKG_CONFIG_PATH.
++    local pcp="${SPRINT_PKG_CONFIG_PATH:-/usr/lib/arm-linux-gnueabihf/pkgconfig}"
++    if have pkg-config && ! PKG_CONFIG_PATH="$pcp" pkg-config --exists sdl2 2>/dev/null; then
++        warn "SDL2 armhf not detected in $pcp: if the build fails, install libsdl2-dev:armhf"
++    fi
++
++    # update.zip template: holds wbexec.bin/wbgrom.bin/frontend/roms/ and the
++    # 'jzintv' file (ARM binary) which we replace with the freshly built one.
++    local tpl="${SPRINT_ZIP_TEMPLATE:-}"
++    if [ -z "$tpl" ]; then
++        for cand in "$SUP/sprint/update.zip" "$SCRIPT_DIR/../sprint/update.zip"; do
++            [ -f "$cand" ] && { tpl="$cand"; break; }
++        done
++    fi
++    [ -f "$tpl" ] || die "update.zip template not found.  Set SPRINT_ZIP_TEMPLATE=/path/to/update.zip"
++    ok "update.zip template: $tpl"
++
++    clean_objs
++    mkdir -p "$BIN"                       # the Makefile links into ../bin/: it must exist
++    ( cd "$SRC" && rm -f ../bin/jzintv && \
++      make -f Makefile.sprint SVN_REV=0 SVN_DTY=0 -j"$JOBS" ../bin/jzintv )
++    [ -f "$BIN/jzintv" ] || die "ARM build failed (no bin/jzintv)"
++    [ "$STRIP" = "1" ] && "$astrip" --strip-unneeded "$BIN/jzintv"
++
++    # Package: replace the internal 'jzintv' inside the zip with the ARM binary.
++    mkdir -p "$BIN/sprint"
++    rm -f "$BIN/sprint/update.zip"
++    local wd; wd="$(mktemp -d)"
++    ( cd "$wd" && unzip -q "$tpl" && cp -f "$BIN/jzintv" jzintv && chmod +x jzintv \
++        && zip -qr "$BIN/sprint/update.zip" . )
++    rm -rf "$wd"
++    mv -f "$BIN/jzintv" "$BIN/sprint/jzintv"
++    clean_objs
++    ok "-> bin/sprint/jzintv  ($(du -h "$BIN/sprint/jzintv" | cut -f1))"
++    ok "-> bin/sprint/update.zip     ($(du -h "$BIN/sprint/update.zip" | cut -f1))  [rename to update.zip on the USB stick]"
++}
++
+ # ===========================================================================
+ #  MAIN
+ # ===========================================================================
+@@ -162,14 +238,17 @@ rc=0
+ case "$TARGET" in
+     linux)   build_linux ;;
+     windows) build_windows ;;
++    sprint)  build_sprint ;;
+     all)
+         # In 'all', a target whose toolchain is missing is skipped, not fatal.
+         build_linux || rc=1
+         if have "${MINGW}-gcc"; then build_windows || rc=1
+         else warn "MinGW-w64 (${MINGW}-gcc) not found: skipping Windows"; fi
++        if have "${ARM_CROSS}gcc"; then build_sprint || rc=1
++        else warn "ARM toolchain (${ARM_CROSS}gcc) not found: skipping Sprint"; fi
+         ;;
+-    -h|--help|help) sed -n '2,28p' "$0"; exit 0 ;;
+-    *) die "unknown target: '$TARGET' (use: linux | windows | all)";;
++    -h|--help|help) sed -n '2,38p' "$0"; exit 0 ;;
++    *) die "unknown target: '$TARGET' (use: linux | windows | sprint | all)";;
+ esac
+ 
+ log "Contents of bin/:"
+diff --git a/src/Makefile.sprint b/src/Makefile.sprint
+new file mode 100644
+index 0000000..bfb7c3d
+--- /dev/null
++++ b/src/Makefile.sprint
+@@ -0,0 +1,171 @@
++##############################################################################
++## ARM 32-bit cross-compilation Makefile for jzintv (Sprint Edition)
++##############################################################################
++
++#### Container Creation ####
++#### "distrobox create --name arm-sdl2 --image debian:bullseye"
++#### "distrobox enter arm-sdl2"
++#### echo $CONTAINER_ID
++
++# Update e installa
++#### sudo apt update
++
++# Aggiungi ARM
++#### sudo dpkg --add-architecture armhf
++#### sudo apt update
++
++# Installa tutto
++#### sudo apt install -y gcc-arm-linux-gnueabihf g++-arm-linux-gnueabihf \
++     crossbuild-essential-armhf make zip libsdl2-dev:armhf libcapstone4
++
++# Verifica
++#### arm-linux-gnueabihf-gcc --version
++
++##############################################################################
++## Project directory structure
++##############################################################################
++B = ../bin
++L = ../lib
++R = ../rom
++
++##############################################################################
++## ARM Cross-compilation setup
++##############################################################################
++CROSS_COMPILE = arm-linux-gnueabihf-
++CC  = $(CROSS_COMPILE)gcc -std=gnu99
++CXX = $(CROSS_COMPILE)g++ -std=c++14
++AR  = $(CROSS_COMPILE)ar
++STRIP = $(CROSS_COMPILE)strip
++
++# Set "X" to be the executable extension, and "O" to be the object extension.
++X =
++O = o
++
++# Set "RM" to be the remove/delete command
++RM = rm -f
++
++##############################################################################
++## Project-wide build flags
++##############################################################################
++
++# Feature flags
++ENABLE_INTV2PC = 0
++ENABLE_CGC = 0
++GNU_READLINE = 0
++GNU_READLINE_STATIC_HACK = 1
++
++# ARM-specific PKG_CONFIG setup for SDL2
++PKG_CONFIG_PATH = /usr/lib/arm-linux-gnueabihf/pkgconfig
++SDL2_CFLAGS := $(shell PKG_CONFIG_PATH=$(PKG_CONFIG_PATH) pkg-config --cflags sdl2) -DUSE_SDL=2
++SDL2_LFLAGS := $(shell PKG_CONFIG_PATH=$(PKG_CONFIG_PATH) pkg-config --libs sdl2)
++
++# Optimization flags for ARM
++OPT_FLAGS = -O2 -march=armv7-a -mfpu=neon-vfpv4 -mfloat-abi=hard
++
++# Compiler flags
++WARN = -Wall -Wextra -Wno-unused-parameter
++WARNXX = $(WARN)
++DEF_FLAGS =
++LTO =
++
++CFLAGS   = $(OPT_FLAGS) $(WARN) -I. -I..   $(DEF_FLAGS) $(SDL2_CFLAGS)
++CXXFLAGS = $(OPT_FLAGS) $(WARNXX) -I. -I..  $(DEF_FLAGS) $(SDL2_CFLAGS)
++
++# Linker flags - forza dl e rt esplicitamente
++LFLAGS = -Wl,--no-as-needed -ldl -lrt -lpthread -Wl,--as-needed -no-pie
++LFLAGS += -Wl,--gc-sections
++
++# GNU Readline support
++ifeq ($(GNU_READLINE),1)
++RL_CFLAGS = -DUSE_GNU_READLINE
++CFLAGS += $(RL_CFLAGS)
++CXXFLAGS += $(RL_CFLAGS)
++RL_LFLAGS = -lreadline -lncurses
++endif
++
++# GNU Readline static hack to avoid unnecessary dependencies
++ifeq ($(GNU_READLINE_STATIC_HACK),1)
++RL_LFLAGS += -Wl,--defsym=setpwent=0 -Wl,--defsym=getpwent=0
++RL_LFLAGS += -Wl,--defsym=endpwent=0
++RL_LFLAGS += -Wl,--defsym=getpwuid=0 -Wl,--defsym=getpwnam=0
++endif
++
++##############################################################################
++## Build targets
++##############################################################################
++
++OBJS      = jzintv.$(O)
++PROG_SDL2 = $(B)/jzintv
++TOCLEAN  += $(PROG_SDL2)
++TOCLEAN  += core
++
++##############################################################################
++## ARM-specific CGC support (DEVE ESSERE PRIMA di Makefile.common)
++##############################################################################
++
++ifeq ($(ENABLE_CGC),1)
++OBJS += pads/pads_intv2pc.$(O)
++endif
++
++##############################################################################
++## Generic build-rules
++##############################################################################
++
++all: build
++
++$(PROG_SDL2): $(OBJS) $(OBJS_SDL2)
++	@echo "Linking jzintv for ARM 32-bit..."
++	$(CXX) -o $(PROG_SDL2) $(OBJS) $(OBJS_SDL2) $(CFLAGS) $(SDL2_LFLAGS) $(LFLAGS) $(RL_LFLAGS)
++	@echo "Build complete!"
++	@file $(PROG_SDL2)
++	@echo ""
++	@echo "Dependencies:"
++	@$(CROSS_COMPILE)readelf -d $(PROG_SDL2) | grep NEEDED
++
++clean:
++	$(RM) $(OBJS)
++	$(RM) $(OBJS_SDL2)
++	$(RM) $(TOCLEAN)
++
++%.$(O): %.c
++	$(CC) -o $@ $(CFLAGS) -c $<
++
++%.$(O): %.cpp
++	$(CXX) -o $@ $(CXXFLAGS) -c $<
++
++%.s: %.c
++	$(CC) -fverbose-asm -S -o $@ $(CFLAGS) -c $<
++
++##############################################################################
++## CGC compilation rule
++##############################################################################
++
++ifeq ($(ENABLE_CGC),1)
++pads/pads_intv2pc.$(O): pads/pads_intv2pc. c
++	$(CC) -O2 -o $@ $(CFLAGS) -c $<
++endif
++
++##############################################################################
++## Include common Makefile
++##############################################################################
++include Makefile.common
++
++##############################################################################
++## Build declaration
++##############################################################################
++build: jzIntv SDK-1600
++
++##############################################################################
++## Info target for debugging
++##############################################################################
++info:
++	@echo "CC:            $(CC)"
++	@echo "CXX:          $(CXX)"
++	@echo "CFLAGS:       $(CFLAGS)"
++	@echo "CXXFLAGS:     $(CXXFLAGS)"
++	@echo "SDL2_CFLAGS:  $(SDL2_CFLAGS)"
++	@echo "SDL2_LFLAGS:  $(SDL2_LFLAGS)"
++	@echo "LFLAGS:       $(LFLAGS)"
++	@echo "RL_LFLAGS:    $(RL_LFLAGS)"
++	@echo "OBJS:         $(OBJS)"
++	@echo "OBJS_SDL2:    $(OBJS_SDL2)"
+-- 
+2.47.1
+

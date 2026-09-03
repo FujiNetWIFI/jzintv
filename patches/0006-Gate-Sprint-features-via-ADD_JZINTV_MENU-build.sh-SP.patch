@@ -1,0 +1,423 @@
+From 5ca0c078b27c73946cf788317bac089395ee4096 Mon Sep 17 00:00:00 2001
+From: deck <jenergy@tiscali.it>
+Date: Sun, 16 Aug 2026 18:46:19 +0200
+Subject: [PATCH 1/2] Gate Sprint features via ADD_JZINTV_MENU + build.sh
+ SPRINT_FEATURES
+
+Decouple the Sprint in-game popup menu from the build-identity macro and
+route optional Sprint features through build.sh.
+
+Sources: every menu block (jzintv.h/.c, event.c, event_sdl.c, event_plat.h,
+gfx_sdl2.c) is now wrapped in an outer #ifdef JZINTV_SPRINT and an inner
+#ifdef ADD_JZINTV_MENU, so the menu compiles only inside a Sprint build AND
+when the menu feature is enabled.
+
+Build:
+  * src/Makefile.sprint keeps DEF_FLAGS = -DJZINTV_SPRINT (intrinsic, always
+    on) and adds an empty FEATURES ?= appended to CFLAGS/CXXFLAGS.
+  * build.sh has a new SPRINT_FEATURES knob (default -DADD_JZINTV_MENU),
+    handed to make as FEATURES=..., documented in its header. Its behaviour
+    is unchanged by default; 'SPRINT_FEATURES="" ./build.sh sprint' builds a
+    Sprint without the menu.
+  * build.sh now echoes the parameters in effect (target + env knobs) before
+    building, so they are reported even when a target aborts early (e.g. the
+    ARM cross-compiler is missing).
+
+Add ReleaseNotes_20260816.txt describing the change (behaviour-neutral).
+---
+ ReleaseNotes_20260816.txt | 74 +++++++++++++++++++++++++++++++++++++++
+ build.sh                  | 49 +++++++++++++++++++++++++-
+ src/Makefile.sprint       | 13 +++++--
+ src/event/event.c         |  8 +++--
+ src/event/event_plat.h    |  4 ++-
+ src/event/event_sdl.c     | 12 +++++--
+ src/gfx/gfx_sdl2.c        |  6 +++-
+ src/jzintv.c              |  2 ++
+ src/jzintv.h              |  4 ++-
+ 9 files changed, 161 insertions(+), 11 deletions(-)
+ create mode 100644 ReleaseNotes_20260816.txt
+
+diff --git a/ReleaseNotes_20260816.txt b/ReleaseNotes_20260816.txt
+new file mode 100644
+index 0000000..e4e1be8
+--- /dev/null
++++ b/ReleaseNotes_20260816.txt
+@@ -0,0 +1,74 @@
++Release notes for 2026-08-16   (custom build)
++Updates since 2026-08-13.  See ReleaseNotes_20260813.txt for earlier updates.
++
++Custom build of jzIntv based on the 2020-08-22 release (see the earlier notes
++for the full lineage).  This update is internal plumbing only: it changes how
++the Sprint-only features are gated at compile time.  There is no change to the
++Linux or Windows builds, and no change to what a Sprint build actually does --
++the resulting Sprint binary is byte-for-byte equivalent in behaviour.
++
++
++----------
++ Changes:
++----------
++
++*   Sprint build-time feature flags:
++    *   The Sprint in-game popup menu is now gated by its OWN macro,
++        ADD_JZINTV_MENU, nested inside the existing JZINTV_SPRINT:
++
++            #ifdef JZINTV_SPRINT
++            #ifdef ADD_JZINTV_MENU
++                ... menu code ...
++            #endif /* ADD_JZINTV_MENU */
++            #endif /* JZINTV_SPRINT */
++
++        So the menu compiles only in a Sprint build AND only when the menu
++        feature is enabled.  Previously the menu was tied directly to
++        JZINTV_SPRINT, so every Sprint build always got it.  This makes room
++        for further Sprint-only features (each under its own #ifdef, nested in
++        JZINTV_SPRINT) that can be toggled independently of the menu.
++
++    *   Where the macros are defined is now split by role:
++        *   JZINTV_SPRINT  -- the build-IDENTITY macro ("this is a Sprint
++            build").  It stays hard-wired in src/Makefile.sprint (DEF_FLAGS),
++            because it is intrinsic to the target and always on.
++        *   ADD_JZINTV_MENU (and future feature macros) -- OPTIONAL, opt-in
++            features.  These are chosen in build.sh and handed to make via a
++            new FEATURES=... variable, appended to CFLAGS/CXXFLAGS.  This keeps
++            the choice of which features to compile in build.sh instead of
++            hard-wiring it in the Makefile.
++
++*   build.sh:
++    *   New  SPRINT_FEATURES  environment knob (default: -DADD_JZINTV_MENU)
++        that lists the opt-in Sprint feature macros.  build.sh passes it to
++        Makefile.sprint as FEATURES=...  To build a Sprint WITHOUT the menu:
++
++            SPRINT_FEATURES="" ./build.sh sprint
++
++        The header of build.sh documents the JZINTV_SPRINT-vs-features split.
++
++    *   build.sh now echoes the parameters in effect (the positional target
++        plus the environment knobs: CC/CXX, MINGW, ARM_CROSS, SPRINT_FEATURES,
++        JOBS/STRIP/GNU_READLINE) at the start of every run.  It is printed
++        before the build, so the info survives even when a target aborts early
++        -- e.g. a Sprint build that dies because the ARM cross-compiler is
++        missing still reports which SPRINT_FEATURES were requested.
++
++*   src/Makefile.sprint:
++    *   DEF_FLAGS now holds only -DJZINTV_SPRINT (the -DADD_JZINTV_MENU that
++        used to be here moved to build.sh's SPRINT_FEATURES).
++    *   New  FEATURES ?=  variable (empty by default) appended to CFLAGS and
++        CXXFLAGS, so build.sh can inject the opt-in feature macros.
++
++
++-----------------------
++ Building from source:
++-----------------------
++
++Unchanged.  Use the build.sh script at the top of the tree:
++
++    ./build.sh [linux|windows|sprint|all]        (default: all)
++
++New for Sprint: set  SPRINT_FEATURES  to choose the opt-in features (default
++-DADD_JZINTV_MENU).  See the header of build.sh and ReleaseNotes_20260813.txt
++for the rest.
+diff --git a/build.sh b/build.sh
+index 5ebb79a..fd89789 100755
+--- a/build.sh
++++ b/build.sh
+@@ -31,6 +31,7 @@
+ #     SDL2_VERSION       SDL2 version to download     (default 2.32.8)
+ #     ARM_CROSS          ARM toolchain prefix         (default arm-linux-gnueabihf-)
+ #     SPRINT_ZIP_TEMPLATE base update.zip for Sprint  (else build-support/../sprint)
++#     SPRINT_FEATURES    extra Sprint feature -D's    (default -DADD_JZINTV_MENU)
+ #     GNU_READLINE       1 to enable readline         (default 0)
+ #     STRIP              0 to NOT strip               (default 1)
+ #     JOBS               make parallelism             (default: nproc)
+@@ -50,6 +51,30 @@ CXX="${CXX:-g++}"
+ MINGW="${MINGW:-x86_64-w64-mingw32}"
+ ARM_CROSS="${ARM_CROSS:-arm-linux-gnueabihf-}"
+ SDL2_VERSION="${SDL2_VERSION:-2.32.8}"
++
++# --- Sprint feature macros -------------------------------------------------
++# How Sprint build-time defines are split between the Makefile and this script:
++#
++#   * JZINTV_SPRINT  -- the build-IDENTITY macro ("this is a Sprint build").
++#                       It is INTRINSIC to the target and always on, so it is
++#                       hard-wired in src/Makefile.sprint (DEF_FLAGS) and is
++#                       NOT set here.  Leave it in the Makefile.
++#
++#   * SPRINT_FEATURES -- the OPTIONAL, opt-in features layered on top of a
++#                       Sprint build.  These live HERE (not in the Makefile) so
++#                       we can turn each one on/off from the command line
++#                       without editing the Makefile.  They are handed to make
++#                       via FEATURES=... and appended to CFLAGS/CXXFLAGS.
++#
++# Each feature is a -D macro that also appears as an #ifdef in the sources,
++# nested inside #ifdef JZINTV_SPRINT (so a feature only compiles in a Sprint
++# build).  Add future Sprint features (e.g. the FPS fix, the keypad remap) as
++# more -D... entries in the default below.
++#
++#   For now the only feature is the in-game popup menu: -DADD_JZINTV_MENU.
++#   Override from the environment, e.g.:  SPRINT_FEATURES="" ./build.sh sprint
++#   to build a Sprint WITHOUT the menu.
++SPRINT_FEATURES="${SPRINT_FEATURES--DADD_JZINTV_MENU}"
+ GNU_READLINE="${GNU_READLINE:-0}"
+ STRIP="${STRIP:-1}"
+ if [ -z "${JOBS:-}" ]; then JOBS="$(nproc 2>/dev/null || getconf _NPROCESSORS_ONLN 2>/dev/null || echo 1)"; fi
+@@ -213,8 +238,11 @@ build_sprint() {
+ 
+     clean_objs
+     mkdir -p "$BIN"                       # the Makefile links into ../bin/: it must exist
++    # JZINTV_SPRINT comes from Makefile.sprint (DEF_FLAGS); the opt-in feature
++    # macros are injected here via FEATURES=... (see SPRINT_FEATURES above).
++    [ -n "$SPRINT_FEATURES" ] && ok "Sprint features: $SPRINT_FEATURES" || ok "Sprint features: (none)"
+     ( cd "$SRC" && rm -f ../bin/jzintv && \
+-      make -f Makefile.sprint SVN_REV=0 SVN_DTY=0 -j"$JOBS" ../bin/jzintv )
++      make -f Makefile.sprint SVN_REV=0 SVN_DTY=0 FEATURES="$SPRINT_FEATURES" -j"$JOBS" ../bin/jzintv )
+     [ -f "$BIN/jzintv" ] || die "ARM build failed (no bin/jzintv)"
+     [ "$STRIP" = "1" ] && "$astrip" --strip-unneeded "$BIN/jzintv"
+ 
+@@ -235,6 +263,25 @@ build_sprint() {
+ #  MAIN
+ # ===========================================================================
+ rc=0
++
++# Echo the parameters in effect (the positional target + the environment knobs),
++# so every run reports what it was asked to do.  This is printed BEFORE the
++# build, so the info survives even when a target aborts early -- e.g. a Sprint
++# build that dies because the ARM cross-compiler is missing still shows the
++# target and the SPRINT_FEATURES that were requested.
++case "$TARGET" in
++    -h|--help|help) ;;    # help prints its own text, skip the parameter report
++    *)
++        log "Parameters in effect:"
++        ok "target          = $TARGET"
++        ok "CC / CXX        = $CC / $CXX"
++        ok "MINGW           = $MINGW"
++        ok "ARM_CROSS       = $ARM_CROSS"
++        ok "SPRINT_FEATURES = ${SPRINT_FEATURES:-(none)}"
++        ok "JOBS / STRIP    = $JOBS / $STRIP    GNU_READLINE = $GNU_READLINE"
++        ;;
++esac
++
+ case "$TARGET" in
+     linux)   build_linux ;;
+     windows) build_windows ;;
+diff --git a/src/Makefile.sprint b/src/Makefile.sprint
+index 364c5ad..6ff63ab 100644
+--- a/src/Makefile.sprint
++++ b/src/Makefile.sprint
+@@ -65,11 +65,20 @@ OPT_FLAGS = -O2 -march=armv7-a -mfpu=neon-vfpv4 -mfloat-abi=hard
+ # Compiler flags
+ WARN = -Wall -Wextra -Wno-unused-parameter
+ WARNXX = $(WARN)
++
++# DEF_FLAGS: build-identity macros that are INTRINSIC to the Sprint target and
++# must always be on.  -DJZINTV_SPRINT lives here on purpose: it defines "this is
++# a Sprint build".  Do NOT move it out.
+ DEF_FLAGS = -DJZINTV_SPRINT
++
++# FEATURES: OPTIONAL per-feature toggles, passed in from build.sh (e.g.
++# -DADD_JZINTV_MENU).  Empty by default here so the choice of which features to
++# compile stays in build.sh, not hard-wired in this Makefile.  See build.sh.
++FEATURES ?=
+ LTO =
+ 
+-CFLAGS   = $(OPT_FLAGS) $(WARN) -I. -I..   $(DEF_FLAGS) $(SDL2_CFLAGS)
+-CXXFLAGS = $(OPT_FLAGS) $(WARNXX) -I. -I..  $(DEF_FLAGS) $(SDL2_CFLAGS)
++CFLAGS   = $(OPT_FLAGS) $(WARN) -I. -I..   $(DEF_FLAGS) $(FEATURES) $(SDL2_CFLAGS)
++CXXFLAGS = $(OPT_FLAGS) $(WARNXX) -I. -I..  $(DEF_FLAGS) $(FEATURES) $(SDL2_CFLAGS)
+ 
+ # Linker flags - forza dl e rt esplicitamente
+ LFLAGS = -Wl,--no-as-needed -ldl -lrt -lpthread -Wl,--as-needed -no-pie
+diff --git a/src/event/event.c b/src/event/event.c
+index a2b5329..6f10b4c 100644
+--- a/src/event/event.c
++++ b/src/event/event.c
+@@ -49,8 +49,10 @@
+ #include "event/event_tbl.h"
+ #include "event/event_plat.h"
+ #ifdef JZINTV_SPRINT
++#ifdef ADD_JZINTV_MENU
+ #include "jzintv.h"       /* sprint_keypad_word(): keypad state for the menu.  */
+-#endif
++#endif /* ADD_JZINTV_MENU */
++#endif /* JZINTV_SPRINT */
+ 
+ #define EVT_MAP_STACK_EMPTY (0)
+ 
+@@ -297,6 +299,7 @@ LOCAL int event_dequeue
+ /*  EVENT_TICK   -- Processes currently pending events in the event queue   */
+ /* ======================================================================== */
+ #ifdef JZINTV_SPRINT
++#ifdef ADD_JZINTV_MENU
+ /* ======================================================================== */
+ /*  EVENT_KEYPAD_DIGIT -- Sprint in-game menu helper.                        */
+ /*                                                                          */
+@@ -322,7 +325,8 @@ int event_keypad_digit(evt_pvt_t *const pvt, event_num_t event_num)
+ 
+     return 0;
+ }
+-#endif
++#endif /* ADD_JZINTV_MENU */
++#endif /* JZINTV_SPRINT */
+ 
+ LOCAL uint32_t event_tick(periph_t *const p, uint32_t len)
+ {
+diff --git a/src/event/event_plat.h b/src/event/event_plat.h
+index e1a0658..831a018 100644
+--- a/src/event/event_plat.h
++++ b/src/event/event_plat.h
+@@ -89,6 +89,7 @@ bool event_enqueue_check_combo
+ );
+ 
+ #ifdef JZINTV_SPRINT
++#ifdef ADD_JZINTV_MENU
+ /* ======================================================================== */
+ /*  EVENT_KEYPAD_DIGIT  -- Sprint menu: resolve a raw event through the      */
+ /*  active keymap to the Intellivision keypad digit (1..9) it drives on      */
+@@ -96,7 +97,8 @@ bool event_enqueue_check_combo
+ /*  a game does, with no hard-coded keys.                                    */
+ /* ======================================================================== */
+ int event_keypad_digit(evt_pvt_t *const pvt, event_num_t event_num);
+-#endif
++#endif /* ADD_JZINTV_MENU */
++#endif /* JZINTV_SPRINT */
+ 
+ /* ======================================================================== */
+ /*  EVENT_NUM_OFS    -- Compute an event_num_t as an offset from a base.    */
+diff --git a/src/event/event_sdl.c b/src/event/event_sdl.c
+index 4f72a5e..590c966 100644
+--- a/src/event/event_sdl.c
++++ b/src/event/event_sdl.c
+@@ -18,9 +18,11 @@
+ #include "mouse/mouse.h"
+ #include "plat/plat.h"
+ #ifdef JZINTV_SPRINT
++#ifdef ADD_JZINTV_MENU
+ #include "jzintv.h"
+ int popup_state = 0;   /* 0 = closed, 1 = open.  Sprint-only in-game menu.   */
+-#endif
++#endif /* ADD_JZINTV_MENU */
++#endif /* JZINTV_SPRINT */
+ 
+ /* TODO:  Migrate Enscripten support to SDL2. */
+ #if defined(__EMSCRIPTEN__)
+@@ -148,6 +150,7 @@ bool event_plat_tick(evt_pvt_t *const evt_pvt, void *const void_plat_pvt)
+     while (event_queue_has_room(evt_pvt, 4) && SDL_PollEvent(&event))
+     {
+ #ifdef JZINTV_SPRINT
++#ifdef ADD_JZINTV_MENU
+         /* ---- Sprint in-game menu: while it is open, keyboard drives it. -- */
+         if (popup_state && (event.type == SDL_KEYDOWN || event.type == SDL_KEYUP))
+         {
+@@ -180,7 +183,8 @@ bool event_plat_tick(evt_pvt_t *const evt_pvt, void *const void_plat_pvt)
+             }
+             continue;                       /* swallow keyboard while menu up  */
+         }
+-#endif
++#endif /* ADD_JZINTV_MENU */
++#endif /* JZINTV_SPRINT */
+         switch (event.type)
+         {
+             /* ------------------------------------------------------------ */
+@@ -196,6 +200,7 @@ bool event_plat_tick(evt_pvt_t *const evt_pvt, void *const void_plat_pvt)
+                 const event_num_t event_num = event_sdl_translate_key(&event);
+ 
+ #ifdef JZINTV_SPRINT
++#ifdef ADD_JZINTV_MENU
+                 /* F1 opens the Sprint in-game menu (and pauses emulation). */
+                 if (event.type == SDL_KEYDOWN && event_num == EVENT_F1
+                     && !popup_state)
+@@ -204,7 +209,8 @@ bool event_plat_tick(evt_pvt_t *const evt_pvt, void *const void_plat_pvt)
+                     force_pause(1);
+                     break;
+                 }
+-#endif
++#endif /* ADD_JZINTV_MENU */
++#endif /* JZINTV_SPRINT */
+                 if (event_enqueue_check_combo(evt_pvt, event_updn, event_num))
+                     return true;
+ 
+diff --git a/src/gfx/gfx_sdl2.c b/src/gfx/gfx_sdl2.c
+index 78f06b0..dbf9193 100644
+--- a/src/gfx/gfx_sdl2.c
++++ b/src/gfx/gfx_sdl2.c
+@@ -42,6 +42,7 @@ const double frame_delta = 0.0166;  /* Slightly faster than 60Hz.           */
+ int gfx_force_4_3 = 0;
+ 
+ #ifdef JZINTV_SPRINT
++#ifdef ADD_JZINTV_MENU
+ /* ======================================================================== */
+ /*  Sprint in-game popup: minimal 8x8 bitmap font + string drawing.         */
+ /*  popup_state lives in event_sdl.c; the (dynamic) menu comes from          */
+@@ -106,6 +107,7 @@ static void popup_draw_string(SDL_Renderer *rend, const char *str,
+                 }
+     }
+ }
++#endif /* ADD_JZINTV_MENU */
+ #endif /* JZINTV_SPRINT */
+ 
+ /*
+@@ -614,6 +616,7 @@ LOCAL int gfx_flip(const gfx_t *const gfx)
+                        gfx->scrshot & GFX_RESET ? NULL : &dest);
+ 
+ #ifdef JZINTV_SPRINT
++#ifdef ADD_JZINTV_MENU
+     /* ---- Sprint in-game menu overlay (dynamic: "Load" only if a .sav). --- */
+     if (popup_state)
+     {
+@@ -648,7 +651,8 @@ LOCAL int gfx_flip(const gfx_t *const gfx)
+         }
+         SDL_SetRenderDrawBlendMode(rend, SDL_BLENDMODE_NONE);
+     }
+-#endif
++#endif /* ADD_JZINTV_MENU */
++#endif /* JZINTV_SPRINT */
+ 
+     SDL_RenderPresent(rend);
+ 
+diff --git a/src/jzintv.c b/src/jzintv.c
+index fde1601..b279ba6 100644
+--- a/src/jzintv.c
++++ b/src/jzintv.c
+@@ -1636,6 +1636,7 @@ static void fake_osd(uint8_t *disp, uint32_t rnd)
+ }
+ 
+ #ifdef JZINTV_SPRINT
++#ifdef ADD_JZINTV_MENU
+ /* ======================================================================== */
+ /*  SPRINT IN-GAME POPUP  --  helpers for the Sprint-only pause menu.        */
+ /*  (Load/Save/Reset/Quit/Resume; see jzintv.h, event_sdl.c, gfx_sdl2.c.)    */
+@@ -1681,6 +1682,7 @@ const char *popup_label(popup_item_t item)
+     }
+     return "";
+ }
++#endif /* ADD_JZINTV_MENU */
+ #endif /* JZINTV_SPRINT */
+ 
+ /* ======================================================================== */
+diff --git a/src/jzintv.h b/src/jzintv.h
+index 17ec2aa..580c6a9 100644
+--- a/src/jzintv.h
++++ b/src/jzintv.h
+@@ -2,10 +2,11 @@
+ #define JZINTV_H_
+ 
+ #ifdef JZINTV_SPRINT
++#ifdef ADD_JZINTV_MENU
+ /* ======================================================================== */
+ /*  Sprint-only in-game popup menu: Load / Save / Reset / Quit / Resume.     */
+ /*  Compiled ONLY when building for the Intellivision Sprint                 */
+-/*  (-DJZINTV_SPRINT, set in Makefile.sprint).  Implemented in jzintv.c and  */
++/*  (-DADD_JZINTV_MENU, set in Makefile.sprint).  Implemented in jzintv.c and */
+ /*  used by event_sdl.c (input) and gfx_sdl2.c (drawing).                    */
+ /* ======================================================================== */
+ typedef enum
+@@ -28,6 +29,7 @@ const char *popup_label(popup_item_t item);
+ /*  same word the keymap writes for PD0L_KP<digit>).  Lets event.c match a    */
+ /*  resolved event to a keypad digit without pulling in all of cfg.h.         */
+ const void *sprint_keypad_word(int digit);
++#endif /* ADD_JZINTV_MENU */
+ #endif /* JZINTV_SPRINT */
+ 
+ #endif /* JZINTV_H_ */
+-- 
+2.47.1
+

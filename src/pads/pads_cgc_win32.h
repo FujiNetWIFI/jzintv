@@ -13,7 +13,7 @@
 #ifndef PAD_CGC_WIN32_H_
 #define PAD_CGC_WIN32_H_
 
-#ifdef WIN32
+#if PLAT_WIN32
 
 /* ======================================================================== */
 /*  PAD_CGC_INIT -- Initializes a Classic Gaming Controller interface.      */

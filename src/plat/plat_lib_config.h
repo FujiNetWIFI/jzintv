@@ -11,13 +11,13 @@
 
 
 /* If we're on the WII, just use its method. */
-#if !defined(GET_TIME_STRATEGY) && defined(WII)
+#if !defined(GET_TIME_STRATEGY) && PLAT_WII
 #   define GET_TIME_STRATEGY GTS_WII
 #endif
 
 /* On WIN32, try to use performance counters */
 #if !defined(GET_TIME_STRATEGY) \
-    && defined(WIN32) && !defined(NO_QUERY_PERF_COUNTER)
+    && PLAT_WIN32 && !defined(NO_QUERY_PERF_COUNTER)
 #   define GET_TIME_STRATEGY GTS_WIN_PERF_COUNTERS 
 #endif
 
@@ -49,13 +49,12 @@
 /* If SDL is the primary strategy (which it is for most platforms), we */
 /* need a fallback for non-SDL builds such as headless. */
 
-
-#if !defined(PLAT_DELAY_STRATEGY) && defined(macintosh)
+#if !defined(PLAT_DELAY_STRATEGY) && PLAT_MACOS == PLAT_MACOS_CLASSIC
 #   define PLAT_DELAY_STRATEGY PDS_MACINTOSH
 #endif
 
 #if !defined(PLAT_DELAY_STRATEGY) \
-    && defined(WIN32) && !defined(NO_HIRES_WAIT_TIMER)
+    && PLAT_WIN32 && !defined(NO_HIRES_WAIT_TIMER)
 #   define PLAT_DELAY_STRATEGY PDS_WIN_WAIT_TIMER
 #endif
 
@@ -81,7 +80,7 @@
 #endif
 
 #if !defined(PLAT_DELAY_STRATEGY_NO_SDL) \
-    && defined(WIN32) && !defined(NO_HIRES_WAIT_TIMER)
+    && PLAT_WIN32 && !defined(NO_HIRES_WAIT_TIMER)
 #   define PLAT_DELAY_STRATEGY_NO_SDL PDS_WIN_WAIT_TIMER
 #endif
 

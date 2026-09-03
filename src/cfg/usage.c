@@ -73,8 +73,7 @@ void usage(void)
                                                                             "\n"
 "Video and Sound Flags:"                                                    "\n"
     );
-#ifndef GP2X
-    jzp_printf(
+    if (PLAT_LINUX != PLAT_LINUX_GP2X) jzp_printf(
 "    -z<res> --displaysize=<res>   Desired active display size, *before*"   "\n"
 "                                  adding border area."                     "\n"
 "                                  <res> can be a string of the form"       "\n"
@@ -106,7 +105,6 @@ void usage(void)
 "                                  \"--prescale=-1\" to print a list of the\n"
 "                                  supported prescalers."                   "\n"
     );
-#endif
     jzp_printf(
 "            --gfx-palette=<file>  Load alternate palette from <file>"      "\n"
 "    -G#     --gramsize=#          Change number of GRAM tiles"             "\n"
@@ -234,34 +232,6 @@ void usage(void)
 "            --cheat='<cheat>'     Adds a cheat code.  Up to 8 cheats can"  "\n"
 "                                  be added.  See doc/jzintv/cheat.txt."    "\n"
                                                                             "\n"
-"            --fujinet[=host[:port]]"                                      "\n"
-"                                  Enable the FujiNet mailbox peripheral"   "\n"
-"                                  at $9800-$9FFF, connecting over BoIP to"  "\n"
-"                                  a fujinet-firmware instance.  Defaults" "\n"
-"                                  to localhost:1985.  If no ROM is given"  "\n"
-"                                  on the command line, boots the built-in" "\n"
-"                                  FujiNet config ROM (WiFi setup / host"   "\n"
-"                                  slots / directory browser) instead of"   "\n"
-"                                  looking for game.rom; an explicit ROM"   "\n"
-"                                  argument always overrides this."         "\n"
-                                                                            "\n"
-"            --fujinet-debug       Trace FujiNet mailbox transactions and" "\n"
-"                                  FujiBus frames to stdout."               "\n"
-                                                                            "\n"
-"            --fujinet-bootdump=PREFIX"                                    "\n"
-"                                  Also write every DBC-addressed ROM/.cfg""\n"
-"                                  push to PREFIX.rom and PREFIX.cfg, on"   "\n"
-"                                  top of booting it.  Diff those against"  "\n"
-"                                  the source files to verify the ESP32-"   "\n"
-"                                  side media-type push byte-for-byte."     "\n"
-                                                                            "\n"
-"            --fujinet-bootdir=DIR Writable scratch directory for pushed"   "\n"
-"                                  carts.  A pushed .bin + .cfg pair is"    "\n"
-"                                  staged here so jzIntv's own BIN+CFG"     "\n"
-"                                  loader can read it, and JLP titles keep" "\n"
-"                                  their save files in DIR/jlpsave.  Falls" "\n"
-"                                  back to $TMPDIR, then /tmp."             "\n"
-                                                                            "\n"
 "    -l      --license             License information"                     "\n"
 " -h -?      --help                This usage info"                         "\n"
                                                                             "\n"
@@ -275,7 +245,8 @@ void usage(void)
 "                                  dirs specified by --rom-path before"     "\n"
 "                                  dirs specified by JZINTV_ROM_PATH."      "\n"
                                                                             "\n"
-#ifdef GP2X
+    );
+    if (PLAT_LINUX == PLAT_LINUX_GP2X) jzp_printf(
 "GP2X specific flags"                                                       "\n"
 "            --gp2xclock=#         Set clock rate in MHz.  Default:  200MHz.\n"
 "                                  0 means \"do not change current rate.\"" "\n"
@@ -289,7 +260,8 @@ void usage(void)
 "                                  5: 4-dir, UD/LR bias"                    "\n"
 "                                  6: 4-dir, diagonal bias"                 "\n"
                                                                             "\n"
-#endif
+    );
+    jzp_printf(
 "Legal note:"                                                               "\n"
 "    Intellivision(TM) is a trademark of Intellivision Entertainment.  Neither"
                                                                             "\n"

@@ -24,7 +24,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 
 #define NUL '\0'
 
-#if defined(WIN32) && !defined(WIN32_X)
+#if (defined(WIN32) || defined(_WIN32)) && !defined(WIN32_X)
 #define IMASM_GUI (1)
     #include <windows.h>
     #include <richedit.h>

@@ -329,8 +329,31 @@ EVT_DECL_A("`",  EVENT_BACKQUOTE   )
 /*                                                                          */
 /*      LMETA, RMETA, LSUPER, RSUPER, LGUI, RGUI                            */
 /* ------------------------------------------------------------------------ */
-#if defined(WIN32)
-# if defined(USE_SDL2)
+#if USE_SDL == 0
+    /* Back-end neutral, textual name must be ignored. */
+    EVT_DECL  (NULL,     EVENT_LMETA)
+    EVT_DECL  (NULL,     EVENT_RMETA)
+    EVT_DECL  (NULL,     EVENT_LSUPER)
+    EVT_DECL  (NULL,     EVENT_RSUPER)
+    EVT_DECL  (NULL,     EVENT_LGUI)
+    EVT_DECL  (NULL,     EVENT_RGUI)
+#elif PLAT_WIN32 && USE_SDL == 1
+    /* Windows, SDL1 */
+    EVT_DECL_A("LWIN",   EVENT_LSUPER)
+    EVT_DECL_A("RWIN",   EVENT_RSUPER)
+    EVT_DECL_A("LCMD",   EVENT_LMETA)
+    EVT_DECL_A("RCMD",   EVENT_RMETA)
+    EVT_DECL_A("LSUPER", EVENT_LSUPER)
+    EVT_DECL_A("RSUPER", EVENT_RSUPER)
+    EVT_DECL  ("LMETA",  EVENT_LMETA)
+    EVT_DECL  ("RMETA",  EVENT_RMETA)
+
+    EVT_DECL  ("LGUI",   EVENT_LSUPER)
+    EVT_DECL  ("RGUI",   EVENT_RSUPER)
+
+    EVT_DECL  ("!BAD!",  EVENT_LGUI)
+    EVT_DECL  ("!BAD!",  EVENT_RGUI)
+#elif PLAT_WIN32 && USE_SDL == 2
     /* Windows, SDL2 */
     EVT_DECL  ("!BAD!",  EVENT_LMETA)
     EVT_DECL  ("!BAD!",  EVENT_RMETA)
@@ -348,25 +371,24 @@ EVT_DECL_A("`",  EVENT_BACKQUOTE   )
 
     EVT_DECL  ("LGUI",   EVENT_LGUI)
     EVT_DECL  ("RGUI",   EVENT_RGUI)
-# else /* !defined(USE_SDL2) */
-    /* Windows, SDL1 */
+#elif USE_SDL == 1
+    /* Non-Windows, SDL1 */
     EVT_DECL_A("LWIN",   EVENT_LSUPER)
     EVT_DECL_A("RWIN",   EVENT_RSUPER)
     EVT_DECL_A("LCMD",   EVENT_LMETA)
     EVT_DECL_A("RCMD",   EVENT_RMETA)
-    EVT_DECL_A("LSUPER", EVENT_LSUPER)
-    EVT_DECL_A("RSUPER", EVENT_RSUPER)
-    EVT_DECL  ("LMETA",  EVENT_LMETA)
-    EVT_DECL  ("RMETA",  EVENT_RMETA)
 
-    EVT_DECL  ("LGUI",   EVENT_LSUPER)
-    EVT_DECL  ("RGUI",   EVENT_RSUPER)
+    EVT_DECL_A("LMETA",  EVENT_LMETA)
+    EVT_DECL_A("RMETA",  EVENT_RMETA)
+    EVT_DECL  ("LGUI",   EVENT_LMETA)
+    EVT_DECL  ("RGUI",   EVENT_RMETA)
+
+    EVT_DECL  ("LSUPER", EVENT_LSUPER)
+    EVT_DECL  ("RSUPER", EVENT_RSUPER)
 
     EVT_DECL  ("!BAD!",  EVENT_LGUI)
     EVT_DECL  ("!BAD!",  EVENT_RGUI)
-# endif /* USE_SDL2 */
-#else /* !defined(WIN32) */
-# if defined(USE_SDL2)
+#elif USE_SDL == 2
     /* Non-Windows, SDL2 */
     EVT_DECL  ("!BAD!",  EVENT_LMETA)
     EVT_DECL  ("!BAD!",  EVENT_RMETA)
@@ -384,24 +406,7 @@ EVT_DECL_A("`",  EVENT_BACKQUOTE   )
 
     EVT_DECL  ("LGUI",   EVENT_LGUI)
     EVT_DECL  ("RGUI",   EVENT_RGUI)
-# else /* Non-Windows, SDL1 */
-    EVT_DECL_A("LWIN",   EVENT_LSUPER)
-    EVT_DECL_A("RWIN",   EVENT_RSUPER)
-    EVT_DECL_A("LCMD",   EVENT_LMETA)
-    EVT_DECL_A("RCMD",   EVENT_RMETA)
-
-    EVT_DECL_A("LMETA",  EVENT_LMETA)
-    EVT_DECL_A("RMETA",  EVENT_RMETA)
-    EVT_DECL  ("LGUI",   EVENT_LMETA)
-    EVT_DECL  ("RGUI",   EVENT_RMETA)
-
-    EVT_DECL  ("LSUPER", EVENT_LSUPER)
-    EVT_DECL  ("RSUPER", EVENT_RSUPER)
-
-    EVT_DECL  ("!BAD!",  EVENT_LGUI)
-    EVT_DECL  ("!BAD!",  EVENT_RGUI)
-# endif /* defined(USE_SDL2) */
-#endif /* defined(WIN32) */
+#endif
 
 /* ------------------------------------------------------------------------ */
 /*  The QUIT event, which corresponds to an OS termination request.         */

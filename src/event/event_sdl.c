@@ -16,6 +16,7 @@
 #include "joy/joy.h"
 #include "joy/joy_sdl.h"
 #include "mouse/mouse.h"
+#include "plat/plat.h"
 
 /* TODO:  Migrate Enscripten support to SDL2. */
 #if defined(__EMSCRIPTEN__)
@@ -25,19 +26,7 @@
 /* ======================================================================== */
 /*  Some very minor platform-specific tweaks.                               */
 /* ======================================================================== */
-#ifdef WII
-# define ENABLE_JOY_EVENTS SDL_IGNORE
-#else
-# define ENABLE_JOY_EVENTS SDL_ENABLE
-#endif
-
-#ifdef N900
-# define ENABLE_SYSWM_EVENTS SDL_IGNORE
-#else
-# define ENABLE_SYSWM_EVENTS SDL_ENABLE
-#endif
-
-#ifdef USE_SDL2
+#if SDL_VERSION_ATLEAST(2, 0, 0)
 # define WINDOW_EVENT_CATEGORY SDL_WINDOWEVENT
 #else
 # define WINDOW_EVENT_CATEGORY SDL_ACTIVEEVENT
@@ -89,21 +78,22 @@ int event_plat_init(
         SDL_EventState(SDL_MOUSEBUTTONDOWN,     SDL_ENABLE);
         SDL_EventState(SDL_MOUSEBUTTONUP,       SDL_ENABLE);
     }
-    SDL_EventState(SDL_SYSWMEVENT,          ENABLE_SYSWM_EVENTS);
+    SDL_EventState(SDL_SYSWMEVENT, SDL_ENABLE);
 
     /* -------------------------------------------------------------------- */
     /*  ...and leave us only with the events we ARE interested in.          */
     /* -------------------------------------------------------------------- */
+    const int enable_joy_events = PLAT_WII ? SDL_IGNORE : SDL_ENABLE;
     SDL_EventState(WINDOW_EVENT_CATEGORY,   SDL_ENABLE);
     SDL_EventState(SDL_KEYDOWN,             SDL_ENABLE);
     SDL_EventState(SDL_KEYUP,               SDL_ENABLE);
     SDL_EventState(SDL_QUIT,                SDL_ENABLE);
-    SDL_EventState(SDL_JOYAXISMOTION,       ENABLE_JOY_EVENTS);
-    SDL_EventState(SDL_JOYHATMOTION,        ENABLE_JOY_EVENTS);
-    SDL_EventState(SDL_JOYBUTTONDOWN,       ENABLE_JOY_EVENTS);
-    SDL_EventState(SDL_JOYBUTTONUP,         ENABLE_JOY_EVENTS);
-    SDL_EventState(SDL_JOYBALLMOTION,       ENABLE_JOY_EVENTS);
-    SDL_JoystickEventState(ENABLE_JOY_EVENTS);
+    SDL_EventState(SDL_JOYAXISMOTION,       enable_joy_events);
+    SDL_EventState(SDL_JOYHATMOTION,        enable_joy_events);
+    SDL_EventState(SDL_JOYBUTTONDOWN,       enable_joy_events);
+    SDL_EventState(SDL_JOYBUTTONUP,         enable_joy_events);
+    SDL_EventState(SDL_JOYBALLMOTION,       enable_joy_events);
+    SDL_JoystickEventState(enable_joy_events);
 
     /* -------------------------------------------------------------------- */
     /*  Drain the event queue right now to clear any initial events.        */
@@ -150,9 +140,7 @@ bool event_plat_tick(evt_pvt_t *const evt_pvt, void *const void_plat_pvt)
     /* -------------------------------------------------------------------- */
     /*  Now, process all pending events.                                    */
     /* -------------------------------------------------------------------- */
-#ifdef WII
     getWiiJoyEvents();
-#endif
     while (event_queue_has_room(evt_pvt, 4) && SDL_PollEvent(&event))
     {
         switch (event.type)

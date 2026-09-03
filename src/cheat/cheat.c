@@ -134,11 +134,11 @@ LOCAL cheat_cmd_t *cheat_parse(const int cheat_idx, const char *s)
         if (!(s = cheat_parse_get_cmd(s, cmd, first ? E_OPTIONAL : E_REQUIRED)))
         {
             if (cheat_parse_error)
-                fprintf(stderr, "CHEAT%d:  Parse error: %s\n>> %s\n",
-                        cheat_idx, cheat_parse_error, last_s);
+                jzp_printf("cheat:  CHEAT%d:  Parse error: %s\n>> %s\n",
+                           cheat_idx, cheat_parse_error, last_s);
             else if (first)
-                fprintf(stderr, "CHEAT%d:  Empty cheat?\n>> %s\n",
-                        cheat_idx, last_s);
+                jzp_printf("cheat:  CHEAT%d:  Empty cheat?\n>> %s\n",
+                           cheat_idx, last_s);
             else
                 break;  // Normal termination condition.
 
@@ -149,17 +149,16 @@ LOCAL cheat_cmd_t *cheat_parse(const int cheat_idx, const char *s)
         last_s = s;
         if (!(s = cheat_parse_get_hex(s, &arg[0])))
         {
-            fprintf(stderr, "CHEAT%d: Invalid 1st argument: %s\n>> %s\n",
-                    cheat_idx, cheat_parse_error, last_s);
+            jzp_printf("cheat:  CHEAT%d: Invalid 1st argument: %s\n>> %s\n",
+                       cheat_idx, cheat_parse_error, last_s);
             return NULL;
         }
 
         last_s = s;
         if (!(s = cheat_parse_get_hex(s, &arg[1])))
         {
-            fprintf(stderr,
-                    "CHEAT%d: Invalid 2nd argument: %s\n>> %s\n", cheat_idx,
-                    cheat_parse_error, last_s);
+            jzp_printf("cheat:  CHEAT%d: Invalid 2nd argument: %s\n>> %s\n",
+                       cheat_idx, cheat_parse_error, last_s);
             return NULL;
         }
 
@@ -178,24 +177,49 @@ LOCAL cheat_cmd_t *cheat_parse(const int cheat_idx, const char *s)
 }
 
 /* ======================================================================== */
+/*  CHEAT_PRINT  -- Print the commands in a cheat.                          */
+/* ======================================================================== */
+LOCAL void cheat_print(const cheat_cmd_t* const cmd)
+{
+    for (int i = 0; cmd[i].cmd; ++i)
+    {
+        jzp_printf("%s%c $%04X $%04X", i ? " | " : "",
+                   cmd[i].cmd, cmd[i].arg[0], cmd[i].arg[1]);
+    }
+}
+
+/* ======================================================================== */
 /*  CHEAT_ADD    -- Adds a cheat to cheat_t.                                */
 /* ======================================================================== */
-int cheat_add(cheat_t *const RESTRICT cheat, const char *const s)
+int cheat_add(cheat_t *const RESTRICT cheat, const char *const s, 
+              int cheat_idx)
 {
-    int cheat_idx = cheat_count(cheat);
-    if (cheat_idx == NUM_CHEATS)
+    if (cheat_idx == CHEAT_FIRST_AVAIL)
+        cheat_idx = cheat_first_avail(cheat);
+
+    if (cheat_idx < 0)
     {
-        fprintf(stderr, "cheat: Too many cheats.  Max: %d\n", NUM_CHEATS);
+        jzp_printf("cheat:  Too many cheats.  Max: %d\n", NUM_CHEATS);
         return -1;
     }
 
-    cheat_cmd_t *cmds = cheat_parse(cheat_idx, s);
+    if (cheat->cheat[cheat_idx])
+    {
+        jzp_printf("cheat:  Overriding CHEAT%d with new cheat.\n", cheat_idx);
+        CONDFREE(cheat->cheat[cheat_idx]);
+    }
+
+    cheat_cmd_t *const cmds = cheat_parse(cheat_idx, s);
 
     if (!cmds)
     {
-        fprintf(stderr, "cheat: Failed to add CHEAT%d\n", cheat_idx);
+        jzp_printf("cheat:  Failed to add CHEAT%d\n", cheat_idx);
         return -1;
     }
+
+    jzp_printf("cheat:  CHEAT%d = ", cheat_idx);
+    cheat_print(cmds);
+    jzp_printf("\n");
 
     cheat->cheat[cheat_idx] = cmds;
     return 0;
@@ -206,12 +230,12 @@ int cheat_add(cheat_t *const RESTRICT cheat, const char *const s)
 /* ======================================================================== */
 LOCAL void cheat_exec(cheat_t *const RESTRICT cheat, const int idx)
 {
-    fprintf(stderr, "CHEAT%d invoked.\n", idx);
+    jzp_printf("CHEAT%d invoked.\n", idx);
     for (const cheat_cmd_t *RESTRICT cmd = cheat->cheat[idx]; cmd->cmd; cmd++)
     {
         if (cmd->cmd != 'P' && cmd->cmd != 'E')
         {
-            fprintf(stderr, "CHEAT%d: unknown command '%c %X %X'\n", idx,
+            jzp_printf("CHEAT%d: unknown command '%c %X %X'\n", idx,
                        cmd->cmd, cmd->arg[0], cmd->arg[1]);
             continue;
         }
@@ -219,9 +243,8 @@ LOCAL void cheat_exec(cheat_t *const RESTRICT cheat, const int idx)
         if ((cmd->arg[0] & 0xFFFF) != cmd->arg[0] ||
             (cmd->arg[1] & 0xFFFF) != cmd->arg[1])
         {
-            fprintf(stderr,
-                    "CHEAT%d: invalid arguments for command '%c %X %X'\n",
-                    idx, cmd->cmd, cmd->arg[0], cmd->arg[1]);
+            jzp_printf("CHEAT%d: invalid arguments for command '%c %X %X'\n",
+                       idx, cmd->cmd, cmd->arg[0], cmd->arg[1]);
             continue;
         }
 
@@ -245,7 +268,7 @@ LOCAL uint32_t cheat_tick(periph_t *const periph, const uint32_t len)
 
     for (int i = 0; i < NUM_CHEATS; ++i)
     {
-        uint32_t mask = 1u << i;
+        const uint32_t mask = 1u << i;
 
         if (!(cheat->request & mask))
             continue;
@@ -254,7 +277,7 @@ LOCAL uint32_t cheat_tick(periph_t *const periph, const uint32_t len)
 
         if (!cheat->cheat[i])
         {
-            fprintf(stderr, "CHEAT%d invoked, but not defined.\n", i);
+            jzp_printf("CHEAT%d invoked, but not defined.\n", i);
             continue;
         }
 
@@ -277,17 +300,30 @@ LOCAL void cheat_dtor(periph_t *const periph)
 }
 
 /* ======================================================================== */
-/*  CHEAT_COUNT  -- Returns number of active cheats.                        */
+/*  CHEAT_ACTIVE -- Returns a bitmap of the active cheats.                  */
 /* ======================================================================== */
-int cheat_count(const cheat_t *const cheat)
+uint32_t cheat_active(const cheat_t *const cheat)
 {
-    int i;
+    uint32_t active = 0;
 
-    for (i = 0; i < NUM_CHEATS; i++)
+    for (int i = 0; i < NUM_CHEATS; i++)
+        if (cheat->cheat[i])
+            active |= 1u << i;
+
+    return active;
+}
+
+/* ======================================================================== */
+/*  CHEAT_FIRST_AVAIL    -- Returns the first available cheat slot.         */
+/*                          Returns -1 if none available.                   */
+/* ======================================================================== */
+int cheat_first_avail(const cheat_t *const cheat)
+{
+    for (int i = 0; i < NUM_CHEATS; i++)
         if (!cheat->cheat[i])
-            break;
+            return i;
 
-    return i;
+    return -1;
 }
 
 /* ======================================================================== */

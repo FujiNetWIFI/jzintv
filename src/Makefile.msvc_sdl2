@@ -31,10 +31,13 @@ SLFLAGS = $(LFLAGS)
 #    SDL's lib/{x86,x64}/SDL2.dll into ../bin (e.g., ../bin/SDL2.dll exists)
 #    Use the x86 flavor to build 32-bit binaries, x64 for 64-bit.
 
-SDL_CFLAGS= -DUSE_SDL2
+SDL2_CFLAGS = -DUSE_SDL=2
 # Shell32.lib is needed to resolve some routines referenced by SDL2main.lib.
 # To see which ones, just try linking without it.
-SDL_LFLAGS= $(L)/SDL2main.lib $(L)/SDL2.lib Shell32.lib
+SDL2_LFLAGS = $(L)/SDL2main.lib $(L)/SDL2.lib Shell32.lib
+
+SDL2_CFLAGS += $(SDL2_CFLAGS_EXTRA)
+SDL2_LFLAGS += $(SDL2_LFLAGS_EXTRA)
 
 WARN = -D_CRT_SECURE_NO_WARNINGS -D_CRT_NONSTDC_NO_WARNINGS
 WARNXX = $(WARN)
@@ -46,14 +49,14 @@ DEF_FLAGS  = -DWIN32
 
 OPT_FLAGS = -O2
 
-CFLAGS   = $(OPT_FLAGS) $(WARN)   -I. -I.. $(DEF_FLAGS) $(EXTRA) $(SDL_CFLAGS)
+CFLAGS   = $(OPT_FLAGS) $(WARN)   -I. -I.. $(DEF_FLAGS) $(EXTRA) $(SDL2_CFLAGS)
 CXXFLAGS = $(OPT_FLAGS) $(WARNXX) -I. -I.. $(DEF_FLAGS) -EHsc $(EXTRA) \
-           $(SDL_CFLAGS)
+           $(SDL2_CFLAGS)
 LFLAGS   = notelemetry.$(O)
 
 OBJS      = jzintv.$(O)
 OBJS_SDL2 =
-SDL_DLL   = $(B)/SDL2.dll
+SDL2_DLL  = $(B)/SDL2.dll
 PROG_SDL2 = $(B)/jzintv$(X)
 PROG_NULL = $(B)/jzintv_null$(X)
 TOCLEAN  += $(PROG_SDL2)
@@ -67,7 +70,7 @@ all: build
 
 $(PROG_SDL2): $(OBJS) $(OBJS_SDL2)
 	$(CXX) $(FE)$(PROG_SDL2) $(OBJS) $(OBJS_SDL2) $(CXXFLAGS) $(LFLAGS) \
-	$(SDL_LFLAGS) -link -SUBSYSTEM:CONSOLE
+	$(SDL2_LFLAGS) -link -SUBSYSTEM:CONSOLE
 
 $(PROG_NULL): $(OBJS) $(OBJS_NULL) svn_revision.$(O)
 	$(CXX) $(FE)$(PROG_NULL) $(OBJS) $(OBJS_NULL) $(CXXFLAGS) $(LFLAGS)

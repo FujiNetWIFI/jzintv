@@ -1,0 +1,62 @@
+Release notes for 2020-08-22   (SVN r2141)
+Updates since 2020-07-12.  See ReleaseNotes_20200712.txt for earlier updates.
+
+This is mostly a minor bugfix/cleanup release.
+
+---------------
+ New features:
+---------------
+
+*   jzIntv
+    *   Debugger improvements:  (Readline-enabled builds only)
+        *   Execute keyboard map changes immediately when in the debugger.
+        *   When switching keymaps, refresh the command prompt cleanly.
+
+
+----------
+ Changes:
+----------
+
+*   Upgrades to Cheat facility:
+    *   Cheat facility now supports up to 32 cheats.
+    *   Cheats can be assigned numbers explicitly on the command line with
+        --cheat<#>="details".  e.g. --cheat17="p 123 45"
+    *   Cheat startup messages go to stdout now, instead of stderr.
+    *   Termux Makefiles now forward to main Linux Makefiles, after loading
+        Termux-specific configuration details.
+
+-------------------------
+ Cleanups and bug fixes:
+-------------------------
+
+*   Improvements:
+    *   Add new PLAT_xxx macros that are zero/non-zero valued, rather than
+        defined/not-defined.
+    *   Use _WIN32, not WIN32 to identify Windows.  Migrate jzIntv code to
+        use PLAT_WIN32 for jzIntv's code.
+    *   Start migrating away from #ifdef and toward "constant if" statements.
+    *   Replace USE_SDL2 macro with USE_SDL={0,1,2} definition.  
+        *   Numerous minor cleanups throughout source, esp. event_tbl.inc.
+        *   This is part of migrating away from separate Makefiles for SDL1
+            and SDL2.  Eventually, this should help catch places we include
+            sdl_jzintv.h when we shouldn't.
+    *   Clean up event_sdl.c to better isolate system differences and
+        SDL1/SDL2 differences.
+    *   Add "include guards" on some buildcfg/ files to make it easier to
+        write top-level Makefiles that explicitly include specific
+        configuration files for some aspects, but rely on buildcfg/* for the
+        rest.
+
+*   Fixed bugs:
+    *   Fix "stuck in Map 3" issues.  Keyboard stack was not initialized
+        correctly, and could get jzIntv stuck in Map 3.
+    *   Return 0 on clean exit, rather than 1.
+
+*   Misc:
+    *   On Linux w/X11, attempt to delete the WM_TRANSIENT_HINT property
+        from our window if SDL set it when we didn't want it.  This code is
+        currently very "chatty."  I expect to make it less so in the future.
+    *   Remove some more unused Makefiles.
+    *   Disable -Wunreachable-code for Clang builds, as there's no way to teach
+        it to ignore intentional "if (0)" constructs.
+

@@ -54,10 +54,13 @@ SDL2_PORT_SYN_FLAGS := -I$(SDL2_FRAMEWORK)/Headers/
 # Note: -F$(SDL2_FRAMEWORK)/.. ensures that gcc can find the SDL2 framework even
 # if SDL2_FRAMEWORK had to be overrriden.  See above.
 #
-# TODO:  Eliminate -DUSE_SDL2, at least in this form.
-SDL2_CFLAGS := -DUSE_SDL2 $(SDL2_PORT_SYN_FLAGS)
+# TODO:  Eliminate -DUSE_SDL=2, at least in this form.
+SDL2_CFLAGS := -DUSE_SDL=2 $(SDL2_PORT_SYN_FLAGS)
 SDL2_LFLAGS := -F$(SDL2_FRAMEWORK)/.. -framework SDL2 \
                -framework AppKit -framework Foundation -lobjc
+
+SDL2_CFLAGS += $(SDL2_CFLAGS_EXTRA)
+SDL2_LFLAGS += $(SDL2_LFLAGS_EXTRA)
 
 # Override these in a .mak file.  See buildcfg/00-compiler*.txt for examples.
 LTO ?= -flto
@@ -160,10 +163,7 @@ clean:
 %.$(O): %.cpp
 	$(CXX) -o $@  $(CXXFLAGS) -c $<
 
-## Special workaround for SDL2 on OSX.
-gfx/gfx_sdl2.$(O): gfx/gfx_sdl2_osx.h
-
-gfx/gfx_sdl2_osx.$(O): gfx/gfx_sdl2_osx.m gfx/gfx_sdl2_osx.h
+gfx/gfx_sdl2_osx.$(O): gfx/gfx_sdl2_osx.m gfx/gfx_sdl2_hooks.h
 	$(CC_MFILE) -o $@ $(CFLAGS_MFILE) -fno-objc-arc -c $<
 
 build: jzIntv SDK-1600

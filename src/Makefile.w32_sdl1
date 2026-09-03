@@ -26,10 +26,13 @@ GNU_READLINE ?= 1
 SVN_REV := $(shell (svn info -R || :) | grep "Last Changed Rev:" | cut -d' ' -f4 | sort -n | tail -1)
 SVN_DTY := $(shell echo $$( (svn status || :) | grep -v '^?' | wc -l ) )
 
-SDL1_CFLAGS   := $(shell sdl-config --cflags)
+SDL1_CFLAGS    := $(shell sdl-config --cflags) -DUSE_SDL=1
 SDL1_LFLAGS_IN := $(shell sdl-config --static-libs)
 SDL1_LFLAGS_T1 := $(subst -lSDLmain,,$(SDL1_LFLAGS_IN))
 SDL1_LFLAGS    := $(subst -mwindows,-mconsole,$(SDL1_LFLAGS_T1))
+
+SDL1_CFLAGS += $(SDL1_CFLAGS_EXTRA)
+SDL1_LFLAGS += $(SDL1_LFLAGS_EXTRA)
 
  WARN    = -Wall -W -Wshadow -Wpointer-arith
  WARN   += -Wbad-function-cast -Wcast-qual -Werror
@@ -38,7 +41,7 @@ SDL1_LFLAGS    := $(subst -mwindows,-mconsole,$(SDL1_LFLAGS_T1))
  CC  = gcc -std=gnu11
  CXX = g++ -std=c++14 -U__STRICT_ANSI__ -fvisibility=hidden
 
- DEF_FLAGS  = -DWIN32 -DDOSTMP -DDIRECT_INTV2PC 
+ DEF_FLAGS = -DDIRECT_INTV2PC 
 
 #OPT_FLAGS = -O
 #OPT_FLAGS = -O  -ggdb 
@@ -50,6 +53,9 @@ OPT_FLAGS += -ffunction-sections -flto
 CFLAGS   = $(OPT_FLAGS) $(WARN)   -I. -I.. $(DEF_FLAGS) $(EXTRA)
 CXXFLAGS = $(OPT_FLAGS) $(WARNXX) -I. -I.. $(DEF_FLAGS) $(EXTRA)
 LFLAGS   = -L../lib -static-libgcc -static-libstdc++ -static
+
+# TODO: Move this to SDL-specific build rules.
+CFLAGS += -DUSE_SDL=1
 
 OBJS      = jzintv.$(O)
 PROG_SDL1 = $(B)/jzintv$(X)

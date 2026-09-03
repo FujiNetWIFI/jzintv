@@ -1,0 +1,383 @@
+From f1689134704cd12e3a2f0bd7289ad6c6a506bfcc Mon Sep 17 00:00:00 2001
+From: deck <jenergy@tiscali.it>
+Date: Thu, 13 Aug 2026 16:08:47 +0200
+Subject: [PATCH 5/7] Add build.sh, package-release.sh and ReleaseNotes
+ (Linux/Windows)
+
+---
+ .gitignore                |   9 ++
+ ReleaseNotes_20260813.txt |  88 +++++++++++++++++++
+ build.sh                  | 177 ++++++++++++++++++++++++++++++++++++++
+ package-release.sh        |  64 ++++++++++++++
+ 4 files changed, 338 insertions(+)
+ create mode 100644 ReleaseNotes_20260813.txt
+ create mode 100755 build.sh
+ create mode 100755 package-release.sh
+
+diff --git a/.gitignore b/.gitignore
+index c348de1..60aaf77 100644
+--- a/.gitignore
++++ b/.gitignore
+@@ -6,3 +6,12 @@
+ # jzIntv built binaries (compiled into bin/; shipped *.dll/README stay tracked)
+ /bin/jzintv
+ /bin/jzintv-*
++
++# Build outputs (bin/<platform>/) and vendored deps: not versioned
++/bin/linux/
++/bin/windows/
++/build-support/
++*.exe
++
++# Release zips produced by package-release.sh
++*.zip
+diff --git a/ReleaseNotes_20260813.txt b/ReleaseNotes_20260813.txt
+new file mode 100644
+index 0000000..06ea5c9
+--- /dev/null
++++ b/ReleaseNotes_20260813.txt
+@@ -0,0 +1,88 @@
++Release notes for 2026-08-13   (custom build)
++Updates since 2020-08-22.  See ReleaseNotes_20200822.txt for earlier updates.
++
++Custom build of jzIntv based on the 2020-08-22 release, with the community
++"best" bug-fix tree and the TutorVision auto-select EXEC/GROM patch applied,
++plus the additions below.  jzIntv is (c) Joe Zbiciak; the changes described
++here are downstream additions and are not an official jzIntv release.
++
++
++---------------
++ New features:
++---------------
++
++*   jzIntv
++    *   Save / load machine state (single slot):
++        *   SAVE and LOAD are now bindable events.  SAVE is a twin of DUMP
++            (it writes the state); LOAD restores it.
++        *   Default keyboard bindings:  F2 = SAVE, F3 = LOAD.  (Keymap
++            switching stays on F5/F6/F7.)
++        *   Hackfiles can also bind them to controller combos, e.g.
++            Select + Button1 = SAVE, Select + Button2 = LOAD.
++        *   The saved state covers the CP1600, the STIC (including its
++            frame-timing anchors), the interrupt/bus request queue, ECS ROM
++            paging, and the Intellivoice (SP0256) speech state.  On load, all
++            absolute cycle timestamps are rebased onto the current timeline,
++            so there is no post-load freeze or audio/input desync -- both
++            in-session and across a fresh process.
++        *   The save file is named by the ROM's CRC32 (its content, not its
++            file name): renaming or moving-in-place a ROM keeps its save, and
++            different games in the same folder never overwrite each other.
++            Location, in priority order:
++                1.  $JZINTV_SAVESTATE   (explicit full path)
++                2.  $JZINTV_SAVEDIR/<crc32>.sav
++                3.  <ROM's directory>/<crc32>.sav
++
++    *   New  --aspect-4-3  option:  force a true 4:3 picture in fullscreen on
++        16:9 displays by pillarboxing the image (black bars left and right).
++
++    *   TutorVision support (from the merged patch):  --tv / --sptv /
++        --gramsize, with automatic selection of the TutorVision EXEC/GROM.
++
++
++----------
++ Changes:
++----------
++
++*   Build:
++    *   New  build.sh  convenience script that builds the Linux and Windows
++        executables into  bin/<platform>/  (release, stripped, LTO).  It
++        prefers the system SDL2 (sdl2-config / pkg-config) and cross-compiles
++        Windows with MinGW-w64.  In "all", a target whose toolchain is absent
++        is skipped rather than failing the whole build.
++    *   New  package-release.sh  script that zips the redistributable (the
++        git-tracked GPL source plus the built binaries) into a single archive,
++        excluding the vendored build-support/ and any copyrighted material.
++
++
++-----------------------
++ Building from source:
++-----------------------
++
++Use the build.sh script at the top of the tree:
++
++    ./build.sh [linux|windows|all]        (default: all)
++
++Outputs go to bin/<platform>/  :  bin/linux/jzintv, bin/windows/jzintv.exe.
++Builds are release, stripped, LTO.  In "all", a target whose toolchain is
++missing is skipped, not fatal.
++
++What each target needs:
++
++*   linux    -- a C compiler and the SDL2 development package
++                (libsdl2-dev / SDL2-devel / sdl2).  On a system that ships
++                SDL2 at runtime but not its headers, drop the SDL2 headers
++                into build-support/sdl2-linux-headers/ instead.
++
++*   windows  -- the MinGW-w64 cross-compiler (x86_64-w64-mingw32-gcc/g++) plus
++                the SDL2-MinGW development package.  The latter is taken from
++                $SDL2_MINGW_PREFIX, or build-support/sdl2-mingw/, or is auto-
++                downloaded from libsdl.org (needs curl or wget).
++
++The build-support/ directory (vendored SDL2 dev files) is OPTIONAL: build.sh
++prefers system packages and only falls back to it.  If a required piece is
++missing, build.sh stops with a clear message telling you which package to
++install or which variable to set -- it never fails silently.
++
++Environment knobs:  CC, CXX, MINGW, SDL2_VERSION, SDL2_MINGW_PREFIX, STRIP,
++JOBS.  See the header of build.sh for details.
+diff --git a/build.sh b/build.sh
+new file mode 100755
+index 0000000..5aa6e86
+--- /dev/null
++++ b/build.sh
+@@ -0,0 +1,177 @@
++#!/usr/bin/env bash
++#
++# build.sh - Build jzIntv for Linux and/or Windows.
++#
++# Executables end up in bin/<platform>/ :
++#     bin/linux/jzintv
++#     bin/windows/jzintv.exe  (+ SDL2.dll, libwinpthread-1.dll)
++#
++# Usage:
++#     ./build.sh [linux|windows|all]      (default: all)
++#
++# Designed to be GENERIC (any Linux distro):
++#   * Linux   -> uses the system SDL2 via sdl2-config/pkg-config.  If the dev
++#                headers are missing (e.g. SteamOS) it falls back to those in
++#                build-support/sdl2-linux-headers/ if present.
++#   * Windows -> cross-compiles with MinGW-w64.  The SDL2-MinGW dev files are
++#                taken, in order, from $SDL2_MINGW_PREFIX, the bundle in
++#                build-support/sdl2-mingw/, or downloaded from libsdl.org.
++#
++# Optional environment variables:
++#     CC, CXX            Linux compilers              (default gcc / g++)
++#     MINGW              MinGW triplet                (default x86_64-w64-mingw32)
++#     SDL2_MINGW_PREFIX  SDL2 mingw dir (include/lib) (else bundle/download)
++#     SDL2_VERSION       SDL2 version to download     (default 2.32.8)
++#     GNU_READLINE       1 to enable readline         (default 0)
++#     STRIP              0 to NOT strip               (default 1)
++#     JOBS               make parallelism             (default: nproc)
++#
++set -euo pipefail
++
++# --- script location (the repo) --------------------------------------------
++SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
++SRC="$SCRIPT_DIR/src"
++BIN="$SCRIPT_DIR/bin"
++SUP="$SCRIPT_DIR/build-support"
++
++# --- parameters ------------------------------------------------------------
++TARGET="${1:-all}"
++CC="${CC:-gcc}"
++CXX="${CXX:-g++}"
++MINGW="${MINGW:-x86_64-w64-mingw32}"
++SDL2_VERSION="${SDL2_VERSION:-2.32.8}"
++GNU_READLINE="${GNU_READLINE:-0}"
++STRIP="${STRIP:-1}"
++if [ -z "${JOBS:-}" ]; then JOBS="$(nproc 2>/dev/null || getconf _NPROCESSORS_ONLN 2>/dev/null || echo 1)"; fi
++
++c_reset=$'\033[0m'; c_bold=$'\033[1m'; c_red=$'\033[31m'; c_grn=$'\033[32m'; c_yel=$'\033[33m'
++log()  { printf '%s==> %s%s\n' "$c_bold" "$*" "$c_reset"; }
++ok()   { printf '%s    %s%s\n' "$c_grn" "$*" "$c_reset"; }
++warn() { printf '%s[!] %s%s\n' "$c_yel" "$*" "$c_reset" >&2; }
++die()  { printf '%s[X] %s%s\n' "$c_red" "$*" "$c_reset" >&2; exit 1; }
++have() { command -v "$1" >/dev/null 2>&1; }
++
++clean_objs() { find "$SRC" -name '*.o' -delete 2>/dev/null || true; }
++
++# ===========================================================================
++#  LINUX
++# ===========================================================================
++build_linux() {
++    log "Build Linux ($(uname -m), release + LTO)"
++    have "$CC"  || die "C compiler '$CC' not found"
++    have make   || die "'make' not found"
++
++    # Detect the system SDL2; otherwise fall back to the bundled headers (SteamOS).
++    local extra="" sdl2_cflags=""
++    if have sdl2-config; then sdl2_cflags="$(sdl2-config --cflags 2>/dev/null || true)"
++    elif have pkg-config && pkg-config --exists sdl2 2>/dev/null; then sdl2_cflags="$(pkg-config --cflags sdl2)"; fi
++
++    if printf '#include <SDL.h>\nint main(void){return 0;}\n' | "$CC" $sdl2_cflags -x c - -o /dev/null -c 2>/dev/null; then
++        ok "System SDL2 found (headers OK)"
++    elif [ -f "$SUP/sdl2-linux-headers/SDL2/SDL.h" ]; then
++        extra="-I$SUP/sdl2-linux-headers -I$SUP/sdl2-linux-headers/SDL2"
++        warn "System SDL2 headers missing -> using the bundle build-support/sdl2-linux-headers"
++    else
++        die "SDL2 dev not available.  Install the SDL2 development package (e.g. libsdl2-dev / SDL2-devel / sdl2) or provide build-support/sdl2-linux-headers/."
++    fi
++
++    clean_objs
++    mkdir -p "$BIN"                       # the Makefile links into ../bin/: it must exist
++    ( cd "$SRC" && rm -f ../bin/jzintv && \
++      make -f Makefile.linux_sdl2 SVN_REV=0 SVN_DTY=0 GNU_READLINE="$GNU_READLINE" \
++           EXTRA="$extra" -j"$JOBS" ../bin/jzintv )
++    mkdir -p "$BIN/linux"
++    mv -f "$BIN/jzintv" "$BIN/linux/jzintv"
++    [ "$STRIP" = "1" ] && strip --strip-unneeded "$BIN/linux/jzintv"
++    clean_objs
++    ok "-> bin/linux/jzintv  ($(du -h "$BIN/linux/jzintv" | cut -f1))"
++}
++
++# ===========================================================================
++#  WINDOWS (cross-compile with MinGW-w64)
++# ===========================================================================
++resolve_sdl2_mingw() {
++    # Print the prefix (dir with include/ and lib/libSDL2.dll.a).  Empty if unresolved.
++    local p
++    if [ -n "${SDL2_MINGW_PREFIX:-}" ] && [ -f "$SDL2_MINGW_PREFIX/lib/libSDL2.dll.a" ]; then
++        echo "$SDL2_MINGW_PREFIX"; return 0; fi
++    if [ -f "$SUP/sdl2-mingw/$MINGW/lib/libSDL2.dll.a" ]; then
++        echo "$SUP/sdl2-mingw/$MINGW"; return 0; fi
++    # download from libsdl.org (once, into the bundle cache)
++    local url="https://github.com/libsdl-org/SDL/releases/download/release-${SDL2_VERSION}/SDL2-devel-${SDL2_VERSION}-mingw.tar.gz"
++    local dl
++    if have curl; then dl="curl -fL --retry 3 -o"; elif have wget; then dl="wget -O"; else return 1; fi
++    warn "SDL2 mingw not found: downloading SDL2-devel-${SDL2_VERSION}-mingw from libsdl.org ..." >&2
++    local tmp; tmp="$(mktemp -d)"
++    if $dl "$tmp/sdl2.tgz" "$url" >&2 2>&1 && tar xzf "$tmp/sdl2.tgz" -C "$tmp" 2>/dev/null; then
++        mkdir -p "$SUP/sdl2-mingw"
++        cp -r "$tmp/SDL2-${SDL2_VERSION}/$MINGW" "$SUP/sdl2-mingw/$MINGW"
++        rm -rf "$tmp"
++        [ -f "$SUP/sdl2-mingw/$MINGW/lib/libSDL2.dll.a" ] && { echo "$SUP/sdl2-mingw/$MINGW"; return 0; }
++    fi
++    rm -rf "$tmp"; return 1
++}
++
++build_windows() {
++    log "Build Windows ($MINGW, release + LTO)"
++    local mcc="${MINGW}-gcc" mcxx="${MINGW}-g++" mstrip="${MINGW}-strip"
++    have "$mcc"  || die "cross-compiler '$mcc' not found.  Install MinGW-w64 (Arch/SteamOS: pacman -S mingw-w64-gcc ; Debian/Ubuntu: apt install gcc-mingw-w64-x86-64 g++-mingw-w64-x86-64 ; Fedora: dnf install mingw64-gcc mingw64-gcc-c++)."
++    have "$mcxx" || die "'$mcxx' not found"
++
++    local P; P="$(resolve_sdl2_mingw || true)"
++    [ -n "$P" ] && [ -f "$P/lib/libSDL2.dll.a" ] || die "SDL2 dev for MinGW not available.  Provide \$SDL2_MINGW_PREFIX or build-support/sdl2-mingw/$MINGW, or enable the download (curl/wget)."
++    ok "SDL2 mingw: $P"
++
++    clean_objs
++    mkdir -p "$BIN"                       # the Makefile links into ../bin/: it must exist
++    ( cd "$SRC" && rm -f ../bin/jzintv.exe && \
++      make -f Makefile.w32_sdl2 \
++           CC="$mcc -std=gnu11" \
++           CXX="$mcxx -std=c++14 -U__STRICT_ANSI__ -fvisibility=hidden" \
++           WARN= WARNXX= GNU_READLINE="$GNU_READLINE" SVN_REV=0 SVN_DTY=0 \
++           EXTRA="-I$P/include -I$P/include/SDL2" \
++           SDL2_CFLAGS=" " \
++           SDL2_LFLAGS="-L$P/lib -lmingw32 -lSDL2main -lSDL2" \
++           LFLAGS="-L../lib -static-libgcc -static-libstdc++ -mconsole" \
++           -j"$JOBS" ../bin/jzintv.exe )
++    mkdir -p "$BIN/windows"
++    mv -f "$BIN/jzintv.exe" "$BIN/windows/jzintv.exe"
++    [ "$STRIP" = "1" ] && "$mstrip" --strip-all "$BIN/windows/jzintv.exe"
++
++    # Runtime DLLs to ship: SDL2 + libwinpthread (the others are system DLLs).
++    cp -f "$P/bin/SDL2.dll" "$BIN/windows/" 2>/dev/null || warn "SDL2.dll not found in $P/bin"
++    # Search only directories that exist (an empty sysroot must not reach find,
++    # or it errors and, under set -e/pipefail, aborts before the DLL is copied).
++    local wp="" sysroot d
++    sysroot="$("$mcc" -print-sysroot 2>/dev/null || true)"
++    for d in "/usr/$MINGW" "$sysroot"; do
++        [ -n "$d" ] && [ -d "$d" ] || continue
++        wp="$(find "$d" -name 'libwinpthread-1.dll' 2>/dev/null | head -1)"
++        [ -n "$wp" ] && break
++    done
++    if [ -n "$wp" ]; then cp -f "$wp" "$BIN/windows/"; else warn "libwinpthread-1.dll not found: copy it next to the exe by hand"; fi
++
++    clean_objs
++    ok "-> bin/windows/jzintv.exe  ($(du -h "$BIN/windows/jzintv.exe" | cut -f1))  + DLLs"
++}
++
++# ===========================================================================
++#  MAIN
++# ===========================================================================
++rc=0
++case "$TARGET" in
++    linux)   build_linux ;;
++    windows) build_windows ;;
++    all)
++        # In 'all', a target whose toolchain is missing is skipped, not fatal.
++        build_linux || rc=1
++        if have "${MINGW}-gcc"; then build_windows || rc=1
++        else warn "MinGW-w64 (${MINGW}-gcc) not found: skipping Windows"; fi
++        ;;
++    -h|--help|help) sed -n '2,28p' "$0"; exit 0 ;;
++    *) die "unknown target: '$TARGET' (use: linux | windows | all)";;
++esac
++
++log "Contents of bin/:"
++find "$BIN" -mindepth 2 -maxdepth 2 -type f 2>/dev/null | sed "s#^$SCRIPT_DIR/#  #" | sort
++exit $rc
+diff --git a/package-release.sh b/package-release.sh
+new file mode 100755
+index 0000000..1ecf1e8
+--- /dev/null
++++ b/package-release.sh
+@@ -0,0 +1,64 @@
++#!/usr/bin/env bash
++#
++# package-release.sh -- build a publicly redistributable ZIP of this fork.
++#
++#   INCLUDES:  every git-tracked file (the GPL source) + ALL built binaries
++#              found under bin/ (linux, windows, sprint, ...).  The scan is
++#              automatic: any platform present under bin/<platform>/ is
++#              included, with no need to list it.
++#   EXCLUDES:  build-support/ (untracked), the update.zip files (copyrighted
++#              BIOS + ROMs), .sav files, the .git history, and .gitignore.
++#
++# Usage:  ./package-release.sh [output.zip]
++# Env:    NAME=<inner-folder-name>   (default: this repo's directory name)
++#
++set -euo pipefail
++SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
++cd "$SCRIPT_DIR"
++
++for t in git zip tar; do
++    command -v "$t" >/dev/null || { echo "[X] '$t' is required"; exit 1; }
++done
++git rev-parse --git-dir >/dev/null 2>&1 || { echo "[X] not a git repository"; exit 1; }
++
++# Default archive name = the repo's own directory name (e.g. jzintv-20260811-src),
++# so the .zip and its top folder match it.  Override with NAME=... if desired.
++NAME="${NAME:-$(basename "$SCRIPT_DIR")}"
++OUT="${1:-$SCRIPT_DIR/${NAME}.zip}"
++
++STAGE="$(mktemp -d)"; DEST="$STAGE/$NAME"; mkdir -p "$DEST"
++trap 'rm -rf "$STAGE"' EXIT
++
++echo "==> Source: git-tracked files (build-support/ and .git excluded automatically)"
++git ls-files -z | tar --null -T - -cf - | tar -xf - -C "$DEST"
++
++# .gitignore is a repo-development file, not part of the shipped release.
++rm -f "$DEST/.gitignore"
++
++echo "==> Binaries: auto-scan of bin/ (update.zip and .sav excluded)"
++if [ -d bin ]; then
++    find bin -type f ! -name 'update.zip' ! -name '*.sav' -print0 |
++    while IFS= read -r -d '' f; do
++        mkdir -p "$DEST/$(dirname "$f")"
++        cp -p "$f" "$DEST/$f"
++        echo "    + $f"
++    done
++fi
++
++echo "==> Safety net: strip any non-redistributable material"
++find "$DEST" \( -name '*.sav' -o -name 'update.zip' -o -iname 'wbexec.bin' \
++             -o -iname 'wbgrom.bin' -o -path '*/build-support/*' \) \
++             -print -delete 2>/dev/null || true
++
++echo "==> Creating the zip"
++rm -f "$OUT"
++( cd "$STAGE" && zip -qr "$OUT" "$NAME" )
++
++echo
++echo "OK -> $OUT   ($(du -h "$OUT" | cut -f1), $(unzip -l "$OUT" | tail -1 | awk '{print $2}') files)"
++echo "Final check (no non-redistributable material in the zip):"
++if unzip -l "$OUT" | grep -iqE 'update\.zip|wbexec|wbgrom|/build-support/|\.sav$|/\.gitignore$'; then
++    echo "  [X] WARNING: excluded material found in the zip!"; exit 1
++else
++    echo "  [OK] clean: no update.zip / Sprint BIOS / build-support / .sav / .gitignore"
++fi
+-- 
+2.47.1
+

@@ -31,6 +31,9 @@ SDL2_CFLAGS    := $(shell sdl2-config --cflags)
 SDL2_LFLAGS_IN := $(shell sdl2-config --static-libs)
 SDL2_LFLAGS    := $(subst -mwindows,-mconsole,$(SDL2_LFLAGS_IN))
 
+SDL2_CFLAGS += $(SDL2_CFLAGS_EXTRA)
+SDL2_LFLAGS += $(SDL2_LFLAGS_EXTRA)
+
  WARN    = -Wall -W -Wshadow -Wpointer-arith
  WARN   += -Wbad-function-cast -Wcast-qual -Werror
  WARNXX  = -Wall -W -Wshadow -Wpointer-arith -Wcast-qual -Werror
@@ -38,7 +41,7 @@ SDL2_LFLAGS    := $(subst -mwindows,-mconsole,$(SDL2_LFLAGS_IN))
  CC  = gcc -std=gnu11
  CXX = g++ -std=c++14 -U__STRICT_ANSI__ -fvisibility=hidden
 
- DEF_FLAGS  = -DWIN32 -DDOSTMP -DDIRECT_INTV2PC 
+ DEF_FLAGS = -DDIRECT_INTV2PC 
 
 #OPT_FLAGS = -O
 #OPT_FLAGS = -O  -ggdb 
@@ -51,7 +54,8 @@ CFLAGS   = $(OPT_FLAGS) $(WARN)   -I. -I.. $(DEF_FLAGS) $(EXTRA)
 CXXFLAGS = $(OPT_FLAGS) $(WARNXX) -I. -I.. $(DEF_FLAGS) $(EXTRA)
 LFLAGS   = -L../lib -static-libgcc -static-libstdc++ -static
 
-CFLAGS  += -DUSE_SDL2
+# TODO: Move this to SDL-specific build rules.
+CFLAGS += -DUSE_SDL=2
 
 OBJS      = jzintv.$(O)
 PROG_SDL2 = $(B)/jzintv$(X)

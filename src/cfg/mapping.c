@@ -1,7 +1,7 @@
 /*
  * ============================================================================
  *  Title:    Event binding tables.
- *  Author:   J. Zbiciak, R. Reynolds (GP2X)
+ *  Author:   J. Zbiciak, R. Reynolds (GP2X), Daniele Moglia (Wii)
  * ============================================================================
  *  These tables specify the bindable events and the default bindings.
  * ============================================================================
@@ -35,7 +35,6 @@
 #include "joy/joy.h"
 #include "serializer/serializer.h"
 #include "jlp/jlp.h"
-#include "fujinet/fujinet.h"
 #include "locutus/locutus_adapt.h"
 #include "cheat/cheat.h"
 #include "mapping.h"
@@ -101,8 +100,9 @@ cfg_evtact_t  cfg_event_action[] =
     /* -------------------------------------------------------------------- */
 #   define CHG_EVT_MAP(name, push, pop)                         \
         {                                                       \
-            name, W(chg_evt_map),                               \
-            { EV_MAP_##pop == EV_MAP_NOP ? ~0U : 0, 0 },        \
+            name, W(event.chg_evt_map),                         \
+            { EV_MAP_##pop  == EV_MAP_NOP ? ~0U : 0,            \
+              EV_MAP_##push == EV_MAP_NOP ? ~0U : 0 },          \
             { EV_MAP_##pop, EV_MAP_##push }                     \
         } 
 
@@ -146,14 +146,38 @@ cfg_evtact_t  cfg_event_action[] =
     /* -------------------------------------------------------------------- */
     /*  Cheat events.                                                       */
     /* -------------------------------------------------------------------- */
-    { "CHEAT0",     W(cheat.request),       { ~0U, ~0U },   { 0x01, 0  } },
-    { "CHEAT1",     W(cheat.request),       { ~0U, ~0U },   { 0x02, 0  } },
-    { "CHEAT2",     W(cheat.request),       { ~0U, ~0U },   { 0x04, 0  } },
-    { "CHEAT3",     W(cheat.request),       { ~0U, ~0U },   { 0x08, 0  } },
-    { "CHEAT4",     W(cheat.request),       { ~0U, ~0U },   { 0x10, 0  } },
-    { "CHEAT5",     W(cheat.request),       { ~0U, ~0U },   { 0x20, 0  } },
-    { "CHEAT6",     W(cheat.request),       { ~0U, ~0U },   { 0x40, 0  } },
-    { "CHEAT7",     W(cheat.request),       { ~0U, ~0U },   { 0x80, 0  } },
+    { "CHEAT0",     W(cheat.request),       { ~0U, ~0U },   { 1u <<  0, 0  } },
+    { "CHEAT1",     W(cheat.request),       { ~0U, ~0U },   { 1u <<  1, 0  } },
+    { "CHEAT2",     W(cheat.request),       { ~0U, ~0U },   { 1u <<  2, 0  } },
+    { "CHEAT3",     W(cheat.request),       { ~0U, ~0U },   { 1u <<  3, 0  } },
+    { "CHEAT4",     W(cheat.request),       { ~0U, ~0U },   { 1u <<  4, 0  } },
+    { "CHEAT5",     W(cheat.request),       { ~0U, ~0U },   { 1u <<  5, 0  } },
+    { "CHEAT6",     W(cheat.request),       { ~0U, ~0U },   { 1u <<  6, 0  } },
+    { "CHEAT7",     W(cheat.request),       { ~0U, ~0U },   { 1u <<  7, 0  } },
+    { "CHEAT8",     W(cheat.request),       { ~0U, ~0U },   { 1u <<  8, 0  } },
+    { "CHEAT9",     W(cheat.request),       { ~0U, ~0U },   { 1u <<  9, 0  } },
+    { "CHEAT10",    W(cheat.request),       { ~0U, ~0U },   { 1u << 10, 0  } },
+    { "CHEAT11",    W(cheat.request),       { ~0U, ~0U },   { 1u << 11, 0  } },
+    { "CHEAT12",    W(cheat.request),       { ~0U, ~0U },   { 1u << 12, 0  } },
+    { "CHEAT13",    W(cheat.request),       { ~0U, ~0U },   { 1u << 13, 0  } },
+    { "CHEAT14",    W(cheat.request),       { ~0U, ~0U },   { 1u << 14, 0  } },
+    { "CHEAT15",    W(cheat.request),       { ~0U, ~0U },   { 1u << 15, 0  } },
+    { "CHEAT16",    W(cheat.request),       { ~0U, ~0U },   { 1u << 16, 0  } },
+    { "CHEAT17",    W(cheat.request),       { ~0U, ~0U },   { 1u << 17, 0  } },
+    { "CHEAT18",    W(cheat.request),       { ~0U, ~0U },   { 1u << 18, 0  } },
+    { "CHEAT19",    W(cheat.request),       { ~0U, ~0U },   { 1u << 19, 0  } },
+    { "CHEAT20",    W(cheat.request),       { ~0U, ~0U },   { 1u << 20, 0  } },
+    { "CHEAT21",    W(cheat.request),       { ~0U, ~0U },   { 1u << 21, 0  } },
+    { "CHEAT22",    W(cheat.request),       { ~0U, ~0U },   { 1u << 22, 0  } },
+    { "CHEAT23",    W(cheat.request),       { ~0U, ~0U },   { 1u << 23, 0  } },
+    { "CHEAT24",    W(cheat.request),       { ~0U, ~0U },   { 1u << 24, 0  } },
+    { "CHEAT25",    W(cheat.request),       { ~0U, ~0U },   { 1u << 25, 0  } },
+    { "CHEAT26",    W(cheat.request),       { ~0U, ~0U },   { 1u << 26, 0  } },
+    { "CHEAT27",    W(cheat.request),       { ~0U, ~0U },   { 1u << 27, 0  } },
+    { "CHEAT28",    W(cheat.request),       { ~0U, ~0U },   { 1u << 28, 0  } },
+    { "CHEAT29",    W(cheat.request),       { ~0U, ~0U },   { 1u << 29, 0  } },
+    { "CHEAT30",    W(cheat.request),       { ~0U, ~0U },   { 1u << 30, 0  } },
+    { "CHEAT31",    W(cheat.request),       { ~0U, ~0U },   { 1u << 31, 0  } },
 
     /* -------------------------------------------------------------------- */
     /*  PAD0: Left-hand controller keypad                                   */
@@ -601,7 +625,7 @@ cfg_kbd_t  cfg_key_bind[] =
 { "QUIT",   {   "QUIT",         "QUIT",         "QUIT",         "QUIT"      }},
 { "F1",     {   "QUIT",         "QUIT",         "QUIT",         "QUIT"      }},
 { "ESCAPE", {   "NA",           "NA",           "KEYB_ESC",     "NA"        }},
-#ifdef PLAT_MACOS
+#if PLAT_MACOS
 { "F3",     {   "WTOG",         "WTOG",         "WTOG",         "WTOG"      }},
 { "LCMD",   {   "PSH3",         "PSH3",         "PSH3",         "POP_UP"    }},
 { "RCMD",   {   "PSH3",         "PSH3",         "PSH3",         "POP_UP"    }},
@@ -610,7 +634,7 @@ cfg_kbd_t  cfg_key_bind[] =
 #else
 { "F9",     {   "WTOG",         "WTOG",         "WTOG",         "WTOG"      }},
 #endif
-#ifdef WIN32
+#if PLAT_WIN32
 { "LWIN",   {   "PSH3",         "PSH3",         "PSH3",         "POP_UP"    }},
 { "RWIN",   {   "PSH3",         "PSH3",         "PSH3",         "POP_UP"    }},
 { "LGUI",   {   "PSH3",         "PSH3",         "PSH3",         "POP_UP"    }},
@@ -781,7 +805,7 @@ bits |   0       1    2  3  4    5        6      7
 { "JS0_SE",   { "PD0L_J_SE",    "PD0L_J_SE",    "PD0L_J_SE",    "PD0L_J_SE" }},
 { "JS0_ESE",  { "PD0L_J_ESE",   "PD0L_J_ESE",   "PD0L_J_ESE",   "PD0L_J_ESE"}},
 
-#ifndef GP2X
+#if PLAT_LINUX != PLAT_LINUX_GP2X
 {"JS0_BTN_00",{ "PD0L_A_T",     "PD0L_A_T",     "PD0L_A_T",     "PD0L_A_T"  }},
 {"JS0_BTN_01",{ "PD0L_A_L",     "PD0L_A_L",     "PD0L_A_L",     "PD0L_A_L"  }},
 {"JS0_BTN_02",{ "PD0L_A_R",     "PD0L_A_R",     "PD0L_A_R",     "PD0L_A_R"  }},
@@ -832,7 +856,7 @@ bits |   0       1    2  3  4    5        6      7
 {"JS0_BTN_18",{ "SHF10"   ,   "SHF10"   ,   "SHF10"   ,   "SHF10"      }},
 #endif
 
-#ifndef WII
+#if !PLAT_WII
 {"JS0_HAT0_E", {"PD0R_KP6",     "PD0R_KP6",     "PD0R_KP6",     "PD0R_KP6"  }},
 {"JS0_HAT0_NE",{"PD0R_KP3",     "PD0R_KP3",     "PD0R_KP3",     "PD0R_KP3"  }},
 {"JS0_HAT0_N", {"PD0R_KP2",     "PD0R_KP2",     "PD0R_KP2",     "PD0R_KP2"  }},

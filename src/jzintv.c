@@ -38,7 +38,6 @@
 #include "event/event.h"
 #include "ivoice/ivoice.h"
 #include "jlp/jlp.h"
-#include "fujinet/fujinet.h"
 #include "locutus/locutus_adapt.h"
 #include "cheat/cheat.h"
 #include "cfg/mapping.h"
@@ -278,42 +277,26 @@ int jzintv_entry_point(int argc, char *argv[])
     char title[128];
 
     /* -------------------------------------------------------------------- */
-    /*  On Windows, let's try to get back our stdio.                        */
-    /* -------------------------------------------------------------------- */
-#if 0
-#ifdef WIN32
-    {
-        FILE *newfp;
-        newfp   = fopen("CON:", "w");
-        if (newfp) *stdout = *newfp;
-        newfp   = fopen("CON:", "w");
-        if (newfp) *stderr = *newfp;
-        newfp   = fopen("CON:", "r");
-        if (newfp) *stdin  = *newfp;
-    }
-#endif
-#endif
-
-#ifndef macintosh
-    /* -------------------------------------------------------------------- */
     /*  Sneak real quick and see if the user included -h, --help, -?, or    */
     /*  no flags whatsoever.  In those cases, print a message and leave.    */
     /* -------------------------------------------------------------------- */
-    if (argc < 2)
+    if (PLAT_MACOS != PLAT_MACOS_CLASSIC)
     {
-        license();
-    }
-
-    for (iter = 1; iter < argc; iter++)
-    {
-        if (!strcmp(argv[iter], "--help") ||
-            !strcmp(argv[iter], "-h")     ||
-            !strcmp(argv[iter], "-?"))
+        if (argc < 2)
         {
-            usage();
+            license();
+        }
+
+        for (iter = 1; iter < argc; iter++)
+        {
+            if (!strcmp(argv[iter], "--help") ||
+                !strcmp(argv[iter], "-h")     ||
+                !strcmp(argv[iter], "-?"))
+            {
+                usage();
+            }
         }
     }
-#endif
 
     /* -------------------------------------------------------------------- */
     /*  Platform-specific initialization.                                   */
@@ -333,7 +316,7 @@ int jzintv_entry_point(int argc, char *argv[])
     /* -------------------------------------------------------------------- */
     /*  Parse our arguments and go get an Intellivision!                    */
     /* -------------------------------------------------------------------- */
-#ifdef macintosh
+#if PLAT_MACOS == PLAT_MACOS_CLASSIC
     argc = ccommand( &argv );
 #endif
 #ifdef USE_AS_BACKEND
@@ -349,8 +332,7 @@ reload:
     /*  INTV2PC access.  This causes the UserPort driver to yield port      */
     /*  access, if UserPort is active.                                      */
     /* -------------------------------------------------------------------- */
-#ifdef WIN32
-    if (intv.i2pc0_port || intv.i2pc1_port)
+    if (PLAT_WIN32 && (intv.i2pc0_port || intv.i2pc1_port))
     {
         FILE *UserPortFP;
 
@@ -370,8 +352,6 @@ reload:
 #endif
         }
     }
-#endif
-
 
     /* -------------------------------------------------------------------- */
     /*  Set the window title.  If we recognize a standard Intellivision     */
@@ -509,13 +489,11 @@ jzp_printf("cpu.now = %-8d  stic.now = %-8d diff = %-8d step = %-8d\n", (int)int
 
         was_paused = paused;
 
-        if (intv.chg_evt_map)
+        if (intv.do_evt_map_chgd)
         {
-            event_change_active_map(&intv.event,
-                                    (ev_map_change_req)intv.chg_evt_map);
             pad_reset_inputs(&intv.pad0);
             pad_reset_inputs(&intv.pad1);
-            intv.chg_evt_map = 0;
+            intv.do_evt_map_chgd = 0;
         }
 
         if (paused || do_reset)
@@ -644,21 +622,23 @@ jzp_printf("cpu.now = %-8d  stic.now = %-8d diff = %-8d step = %-8d\n", (int)int
         plat_delay(1000/60);
     }
 
-    if (intv.do_exit)
+    /* Record the do_exit state, as cfg_dtor wipes it. */
+    int exit_flag = intv.do_exit;
+
+    if (exit_flag)
         jzp_printf(
-            intv.do_exit > 0 ? "\nExited on user request.\n"
-                             : "\nExited because game crashed.\n");
+            exit_flag > 0 ? "\nExited on user request.\n"
+                          : "\nExited because game crashed.\n");
+    cfg_dtor(&intv);
 
     if (intv.do_reload)
     {
         intv.do_reload = 0;
         jzp_printf("\nAttempting reload.\n");
-        cfg_dtor(&intv);
         goto reload;
     }
 
-    cfg_dtor(&intv);
-    return intv.do_exit > 0 ? 0 : 1;
+    return exit_flag < 0 ? -exit_flag : 0;
 }
 
 

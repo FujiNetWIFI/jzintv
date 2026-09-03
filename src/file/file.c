@@ -239,31 +239,21 @@ int is_absolute_path(const char *fname)
     if ( has_lzoe_prefix( fname ) )
         return 1;
 
-#ifdef WIN32
     /* Look for a drive letter */
-    if (isalpha(fname[0]) && fname[1] == ':' && fname[2] == PATH_SEP)
+    if (PLAT_WIN32 &&
+        isalpha(fname[0]) && fname[1] == ':' && fname[2] == PATH_SEP)
         return 1;
-#endif
 
-#if defined(__AMIGAOS4__) || defined(WII)
-    /* Look for a prefix of the form "VOL:".  Allow everything but the
-     * path separator to appear before a ":".  */
+    /* Look for a prefix of the form "VOL:".  Allow everything but the      */
+    /* path separator to appear before a ":".                               */
+    /* XXX: Does there need to be a PATH_SEP just after the ':'?            */
+    if (PLAT_AMIGAOS4 || PLAT_WII)
     {
-        const char *s;
-
-        s = fname;
-        while (*s)
-        {
-            if (*s == PATH_SEP)
-                break;
-
-            if (*s == ':')
-                return 1;
-
-            s++;
-        }
+        char *cln = strchr(fname, ':');
+        char *sep = strchr(fname, PATH_SEP);
+        if (cln && (!sep || cln < sep))
+            return true;
     }
-#endif
 
     return 0;
 }
@@ -512,7 +502,7 @@ char *make_absolute_path(const char *cwd, const char *path)
     return new_path;
 }
 
-#ifdef PLAT_MACOS
+#if PLAT_MACOS
 #   include <mach-o/dyld.h>
 #endif
 
@@ -558,6 +548,8 @@ LOCAL char *resolve_link( const char *path )
     // so we have that going for us...
     return REALLOC(rl_buf, char, rl_len + 1);
 }
+#else
+#define resolve_link(p) ((void)(p),NULL)
 #endif
 
 /* ======================================================================== */
@@ -570,9 +562,6 @@ char *get_exe_dir(const char *const argv0)
     char *old_exe_path;
     char *new_exe_path;
     char *s;
-#ifdef WIN32
-    const int argv0_len = strlen(argv0);
-#endif
 
     /* -------------------------------------------------------------------- */
     /*  Disable exe_path for now, as we reuse the PATH routines above that  */
@@ -585,7 +574,7 @@ char *get_exe_dir(const char *const argv0)
     /*  MacOS X: _NSGetExecutablePath supposedly gets *a* path to our       */
     /*  executable.  Then, readlink() should get us the executable itself.  */
     /* -------------------------------------------------------------------- */
-#ifdef PLAT_MACOS
+#if PLAT_MACOS
     {
         char *gep_buf;
         uint32_t gep_buf_size = MAX_CWD_PATH - 1;
@@ -595,7 +584,7 @@ char *get_exe_dir(const char *const argv0)
             goto macosx_fail;
 
         // Try to get the executable path
-        if ( _NSGetExecutablePath(gep_buf, &gep_buf_size) != 0 )
+        if (_NSGetExecutablePath(gep_buf, &gep_buf_size) != 0)
             goto macosx_fail;
 
         // Documentation doesn't say whether path is NUL terminated, to add
@@ -620,11 +609,12 @@ macosx_fail:
     /*  If the system has a /proc/self/exe or similar symlink to the exe,   */
     /*  then try to use that.                                               */
     /* -------------------------------------------------------------------- */
-#ifdef PROC_SELF_EXE
-    new_exe_path = resolve_link(PROC_SELF_EXE);
-    if ( new_exe_path )
-        goto got_exe_path;
-#endif
+    if (PROC_SELF_EXE)
+    {
+        new_exe_path = resolve_link(PROC_SELF_EXE);
+        if ( new_exe_path )
+            goto got_exe_path;
+    }
 
     /* -------------------------------------------------------------------- */
     /*  Classical heuristic:  If argv[0] is set, try the following:         */
@@ -643,26 +633,27 @@ macosx_fail:
         goto got_exe_path;
     }
 
-#ifdef WIN32
-    if (argv0_len > 3 && isalpha(argv0[0]) && argv0[1] == ':')
+    if (PLAT_WIN32)
     {
-        /* ---------------------------------------------------------------- */
-        /*  Common case: C:\path\to\jzintv.exe                              */
-        /* ---------------------------------------------------------------- */
-        if (argv0[2] == PATH_SEP)
+        if (strlen(argv0) > 3 && isalpha(argv0[0]) && argv0[1] == ':')
         {
-            new_exe_path = strdup(argv0);
-            goto got_exe_path;
-        }
+            /* ------------------------------------------------------------ */
+            /*  Common case: C:\path\to\jzintv.exe                          */
+            /* ------------------------------------------------------------ */
+            if (argv0[2] == PATH_SEP)
+            {
+                new_exe_path = strdup(argv0);
+                goto got_exe_path;
+            }
 
-        /* ---------------------------------------------------------------- */
-        /*  Ugh: C:foo.exe is relative to CWD on a specific drive that      */
-        /*  isn't necessarily the current drive.  Let's just fail for now,  */
-        /*  as remaining code doesn't expect this abomination.              */
-        /* ---------------------------------------------------------------- */
-        goto fail;
+            /* ------------------------------------------------------------ */
+            /*  Ugh: C:foo.exe is relative to CWD on a specific drive that  */
+            /*  isn't necessarily the current drive.  Let's just fail for   */
+            /*  now, as remaining code doesn't expect this abomination.     */
+            /* ------------------------------------------------------------ */
+            goto fail;
+        }
     }
-#endif
 
 #ifndef NO_GETCWD
     {
@@ -718,23 +709,25 @@ fail:
     /* -------------------------------------------------------------------- */
     exe_path = old_exe_path;
 
-#ifdef WIN32
     /* -------------------------------------------------------------------- */
     /*  If the argv0 filename didn't end in ".exe", add it and try again.   */
     /* -------------------------------------------------------------------- */
-    if (argv0_len > 5 && stricmp(argv0 + argv0_len - 4, ".exe") != 0)
+    if (PLAT_WIN32)
     {
-        char *with_exe = malloc(argv0_len + 5);
-        if (with_exe)
+        const int argv0_len = strlen(argv0);
+        if (argv0_len > 5 && stricmp(argv0 + argv0_len - 4, ".exe") != 0)
         {
-            memcpy(with_exe, argv0, argv0_len);
-            memcpy(with_exe + argv0_len, ".exe", 5);
-            new_exe_path = get_exe_dir(with_exe);
-            free(with_exe);
-            return new_exe_path;
+            char *with_exe = CALLOC(char, argv0_len + 5);
+            if (with_exe)
+            {
+                memcpy(with_exe, argv0, argv0_len);
+                memcpy(with_exe + argv0_len, ".exe", 5);
+                new_exe_path = get_exe_dir(with_exe);
+                free(with_exe);
+                return new_exe_path;
+            }
         }
     }
-#endif
 
     /* -------------------------------------------------------------------- */
     /*  Return failure.  Bummer, dude.                                      */
