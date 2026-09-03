@@ -1,0 +1,31 @@
+##############################################################################
+## subMakefile for FujiNet mailbox peripheral
+##############################################################################
+
+fujinet/fujibus.$(O): fujinet/fujibus.c fujinet/fujibus.h fujinet/subMakefile
+
+fujinet/fn_sock.$(O): fujinet/fn_sock.c fujinet/fn_sock.h fujinet/subMakefile
+fujinet/fn_sock.$(O): config.h
+
+fujinet/fujinet.$(O): fujinet/fujinet.c fujinet/fujinet.h fujinet/subMakefile
+fujinet/fujinet.$(O): fujinet/fuji_mailbox.h fujinet/fujibus.h fujinet/fn_sock.h
+fujinet/fujinet.$(O): config.h periph/periph.h misc/jzprint.h
+
+fujinet/fujinet_config_rom.$(O): fujinet/fujinet_config_rom.c
+fujinet/fujinet_config_rom.$(O): fujinet/fujinet_config_rom.h fujinet/subMakefile
+
+OBJS += fujinet/fujibus.$(O) fujinet/fn_sock.$(O) fujinet/fujinet.$(O)
+OBJS += fujinet/fujinet_config_rom.$(O)
+
+##############################################################################
+## Regenerate fujinet/fujinet_config_rom.{c,h} from fujinet-config/intv's
+## config.rom build artifact.  Not part of the default build -- run by hand
+## after rebuilding config.rom, and only if you have the fujinet-config repo
+## checked out.  FUJINET_CONFIG_ROM should point at its intv/config.rom.
+##############################################################################
+FUJINET_CONFIG_ROM ?= ../../fujinet-config/intv/config.rom
+
+.PHONY: fujinet-config-rom
+fujinet-config-rom:
+	python3 fujinet/mkconfigrom.py $(FUJINET_CONFIG_ROM) \
+	    fujinet/fujinet_config_rom.c fujinet/fujinet_config_rom.h

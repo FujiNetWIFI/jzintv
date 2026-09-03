@@ -35,6 +35,7 @@
 #include "event/event.h"
 #include "ivoice/ivoice.h"
 #include "jlp/jlp.h"
+#include "fujinet/fujinet.h"
 #include "locutus/locutus_adapt.h"
 #include "cheat/cheat.h"
 #include "cfg/mapping.h"

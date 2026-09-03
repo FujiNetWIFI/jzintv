@@ -66,6 +66,7 @@ typedef struct cfg_t
     legacy_t    legacy;         /* Legacy BIN+CFG game program              */
     ecs_t       ecs;            /* Entertainment Computer System (ECS)      */
     jlp_t       jlp;            /* Jean-Luc Project Support                 */
+    fujinet_t   fujinet;        /* FujiNet mailbox (BoIP client)            */
     t_locutus_wrap locutus;
 
     uint16_t    exec_img[4096 + 4096];

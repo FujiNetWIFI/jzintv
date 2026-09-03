@@ -308,6 +308,47 @@ void periph_register
             addr_lo & bus->addr_mask, addr_hi & bus->addr_mask);
 }
 
+/*
+ * ============================================================================
+ *  PERIPH_UNREGISTER -- Drops a peripheral out of the address decode bins.
+ *                       See periph.h for why this exists at all.
+ * ============================================================================
+ */
+void periph_unregister
+(
+    periph_bus_t    *bus,       /*  Peripheral bus to remove it from.   */
+    periph_t        *periph     /*  Peripheral being unregistered.      */
+)
+{
+    if (!bus || !periph)
+        return;
+
+    const uint32_t bins = (bus->addr_mask >> bus->decode_shift) + 1;
+
+    /* ---------------------------------------------------------------------- */
+    /*  Each bin is a column terminated by the first NULL -- that's how both  */
+    /*  periph_read()/periph_write() and periph_register() itself walk it --  */
+    /*  so entries have to be squeezed together rather than just punched out, */
+    /*  or a hole would hide every device behind it.                          */
+    /* ---------------------------------------------------------------------- */
+    for (uint32_t bin = 0; bin < bins; bin++)
+    {
+        int r, w;
+
+        for (r = w = 0; r < MAX_PERIPH_BIN && bus->rd[r][bin]; r++)
+            if (bus->rd[r][bin] != periph)
+                bus->rd[w++][bin] = bus->rd[r][bin];
+        while (w < r)
+            bus->rd[w++][bin] = NULL;
+
+        for (r = w = 0; r < MAX_PERIPH_BIN && bus->wr[r][bin]; r++)
+            if (bus->wr[r][bin] != periph)
+                bus->wr[w++][bin] = bus->wr[r][bin];
+        while (w < r)
+            bus->wr[w++][bin] = NULL;
+    }
+}
+
 
 /*
  * ============================================================================

@@ -35,6 +35,7 @@
 #include "joy/joy.h"
 #include "serializer/serializer.h"
 #include "jlp/jlp.h"
+#include "fujinet/fujinet.h"
 #include "locutus/locutus_adapt.h"
 #include "cheat/cheat.h"
 #include "mapping.h"

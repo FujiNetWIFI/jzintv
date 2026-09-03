@@ -112,5 +112,6 @@ jzintv_em.$(O): file/file.h ivoice/ivoice.h icart/icart.h cp1600/req_q.h
 jzintv_em.$(O): bincfg/legacy.h bincfg/bincfg.h pads/pads_intv2pc.h
 jzintv_em.$(O): demo/demo.h cfg/cfg.h cfg/mapping.h misc/jzprint.h avi/avi.h
 jzintv_em.$(O): name/name.h misc/file_crc32.h jlp/jlp.h locutus/locutus_adapt.h
+jzintv_em.$(O): fujinet/fujinet.h fujinet/fuji_mailbox.h fujinet/fn_sock.h
 jzintv_em.$(O): emscripten/web_files.h
 

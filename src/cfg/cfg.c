@@ -44,6 +44,8 @@
 #include "joy/joy.h"
 #include "serializer/serializer.h"
 #include "jlp/jlp.h"
+#include "fujinet/fujinet.h"
+#include "fujinet/fujinet_config_rom.h"
 #include "plat/plat.h"
 #include "plat/plat_lib.h"
 #include "misc/file_crc32.h"
@@ -376,7 +378,9 @@ enum
     FLAG_CHEAT20, FLAG_CHEAT21, FLAG_CHEAT22, FLAG_CHEAT23, FLAG_CHEAT24,
     FLAG_CHEAT25, FLAG_CHEAT26, FLAG_CHEAT27, FLAG_CHEAT28, FLAG_CHEAT29,
     FLAG_CHEAT30, FLAG_CHEAT31,
-    FLAG_GFX_ASPECT_4_3
+    FLAG_GFX_ASPECT_4_3,
+    FLAG_FUJINET,       FLAG_FUJINET_DEBUG,FLAG_FUJINET_BOOTDUMP,
+    FLAG_FUJINET_BOOTDIR
 };
 
 struct option cfg_longopt[] =
@@ -520,6 +524,11 @@ struct option cfg_longopt[] =
     {   "cheat30",      1,      NULL,       FLAG_CHEAT30        },
     {   "cheat31",      1,      NULL,       FLAG_CHEAT31        },
 
+    {   "fujinet",      2,      NULL,       FLAG_FUJINET        },
+    {   "fujinet-debug",0,      NULL,       FLAG_FUJINET_DEBUG  },
+    {   "fujinet-bootdump", 1,  NULL,       FLAG_FUJINET_BOOTDUMP },
+    {   "fujinet-bootdir",  1,  NULL,       FLAG_FUJINET_BOOTDIR  },
+
     {   NULL,           0,      NULL,       0                   }
 };
 
@@ -568,6 +577,12 @@ void cfg_init(cfg_t *cfg, int argc, char * argv_orig[])
     char       *disp_res    = NULL;
     const char *err_msg     = NULL;
     int locutus             = 0;
+    int fujinet_enable      = 0;
+    int fujinet_debug       = 0;
+    int fujinet_use_config_rom = 0;
+    char *fujinet_target    = NULL;
+    char *fujinet_bootdump  = NULL;
+    char *fujinet_bootdir   = NULL;
 #ifndef NO_SERIALIZER
     ser_hier_t *ser_cfg;
 #endif
@@ -888,6 +903,24 @@ void cfg_init(cfg_t *cfg, int argc, char * argv_orig[])
                 STR_REPLACE(fn_ecs_printer, optarg);
                 break;
 
+            case FLAG_FUJINET:
+                fujinet_enable = 1;
+                if (!noarg && optarg)
+                    STR_REPLACE(fujinet_target, optarg);
+                break;
+
+            case FLAG_FUJINET_DEBUG:
+                fujinet_debug = 1;
+                break;
+
+            case FLAG_FUJINET_BOOTDUMP:
+                STR_REPLACE(fujinet_bootdump, optarg);
+                break;
+
+            case FLAG_FUJINET_BOOTDIR:
+                STR_REPLACE(fujinet_bootdir, optarg);
+                break;
+
             case 'c':
             {
                 const char *name = "Default";
@@ -968,7 +1001,14 @@ void cfg_init(cfg_t *cfg, int argc, char * argv_orig[])
     }
 
     if (optind < argc)
+    {
         STR_REPLACE(cfg->fn_game, argv_copy[optind]);
+    } else if (fujinet_enable)
+    {
+        /*  No ROM given on the command line, but --fujinet was.  Boot the  */
+        /*  embedded FujiNet config ROM instead of the "game.rom" default.  */
+        fujinet_use_config_rom = 1;
+    }
 
     CONDFREE(argv_data);
     CONDFREE(argv_copy);
@@ -1209,62 +1249,92 @@ void cfg_init(cfg_t *cfg, int argc, char * argv_orig[])
     }
 
     /* -------------------------------------------------------------------- */
-    /*  First try to load it as a legacy ROM.  If the legacy code decides   */
-    /*  it's not actually a BIN+CFG, it'll hand us back a .ROM filename.    */
+    /*  If --fujinet was given with no ROM on the command line, boot the    */
+    /*  embedded FujiNet config ROM (WiFi setup / host slots / directory    */
+    /*  browser) instead of looking for "game.rom".  An explicit ROM        */
+    /*  argument (handled above/below via cfg->fn_game) always takes        */
+    /*  precedence -- this branch is only reached when none was given.      */
     /* -------------------------------------------------------------------- */
-    tmp = legacy_bincfg(&(cfg->legacy), rom_path, cfg->fn_game, &legacy_rom,
-                        &(cfg->cp1600), jlp_accel, jlp_flash, rand_mem);
-
-    if (legacy_rom && cfg->legacy.bc->metadata)
-        meta = cfg->legacy.bc->metadata;
-
-    if (legacy_rom && cfg->legacy.bc->diags)
+    if (fujinet_use_config_rom)
     {
-        jzp_printf("\n");
-        bc_print_diag(jzp_printer(),
-                      cfg->legacy.bc->cfgfile,
-                      cfg->legacy.bc->diags, 0);
-        jzp_printf("\n");
-    }
-
-    if (tmp == NULL)
-    {
-        fprintf(stderr, "ERROR:  Failed to initialize game\n");
-        exit(1);
-    }
-    CONDFREE(cfg->fn_game);
-    cfg->fn_game = tmp;
-
-    /* -------------------------------------------------------------------- */
-    /*  If it wasn't a legacy ROM, it must be an Intellicart ROM.           */
-    /* -------------------------------------------------------------------- */
-    if (!legacy_rom)
-    {
-        /* not path_fopen, because legacy_bincfg should do that for us. */
-        if (!(f = lzoe_fopen(cfg->fn_game, "rb")))
+        if (icart_init_mem(&cfg->icart, fujinet_config_rom,
+                           fujinet_config_rom_len, rand_mem))
         {
-            perror("fopen()");
-            fprintf(stderr, "ERROR:  Failed to open Intellicart ROM:\n  %s\n",
-                    cfg->fn_game);
+            fprintf(stderr, "ERROR:  Failed to register embedded FujiNet "
+                            "config ROM\n");
             exit(1);
         }
 
-        /* ---------------------------------------------------------------- */
-        /*  Process the Intellicart ROM itself.                             */
-        /* ---------------------------------------------------------------- */
-        if (icart_init(&cfg->icart, f, rand_mem))
-        {
-            fprintf(stderr, "ERROR:  Failed to register Intellicart\n");
-            exit(1);
-        }
-
-        /* ---------------------------------------------------------------- */
-        /*  Grab a look-see on any metadata that was in there.              */
-        /* ---------------------------------------------------------------- */
         if (cfg->icart.rom.metadata)
             meta = cfg->icart.rom.metadata;
 
-        lzoe_fclose(f);
+        CONDFREE(cfg->fn_game);
+        cfg->fn_game = strdup("(embedded FujiNet config ROM)");
+
+        jzp_printf("FujiNet:  Booting embedded config ROM (%ld bytes)\n",
+                   fujinet_config_rom_len);
+    } else
+    {
+        /* -------------------------------------------------------------- */
+        /*  First try to load it as a legacy ROM.  If the legacy code      */
+        /*  decides it's not actually a BIN+CFG, it'll hand us back a      */
+        /*  .ROM filename.                                                 */
+        /* -------------------------------------------------------------- */
+        tmp = legacy_bincfg(&(cfg->legacy), rom_path, cfg->fn_game,
+                            &legacy_rom, &(cfg->cp1600), jlp_accel,
+                            jlp_flash, rand_mem);
+
+        if (legacy_rom && cfg->legacy.bc->metadata)
+            meta = cfg->legacy.bc->metadata;
+
+        if (legacy_rom && cfg->legacy.bc->diags)
+        {
+            jzp_printf("\n");
+            bc_print_diag(jzp_printer(),
+                          cfg->legacy.bc->cfgfile,
+                          cfg->legacy.bc->diags, 0);
+            jzp_printf("\n");
+        }
+
+        if (tmp == NULL)
+        {
+            fprintf(stderr, "ERROR:  Failed to initialize game\n");
+            exit(1);
+        }
+        CONDFREE(cfg->fn_game);
+        cfg->fn_game = tmp;
+
+        /* -------------------------------------------------------------- */
+        /*  If it wasn't a legacy ROM, it must be an Intellicart ROM.      */
+        /* -------------------------------------------------------------- */
+        if (!legacy_rom)
+        {
+            /* not path_fopen, because legacy_bincfg should do that for us. */
+            if (!(f = lzoe_fopen(cfg->fn_game, "rb")))
+            {
+                perror("fopen()");
+                fprintf(stderr, "ERROR:  Failed to open Intellicart ROM:\n"
+                                "  %s\n", cfg->fn_game);
+                exit(1);
+            }
+
+            /* ------------------------------------------------------------ */
+            /*  Process the Intellicart ROM itself.                         */
+            /* ------------------------------------------------------------ */
+            if (icart_init(&cfg->icart, f, rand_mem))
+            {
+                fprintf(stderr, "ERROR:  Failed to register Intellicart\n");
+                exit(1);
+            }
+
+            /* ------------------------------------------------------------ */
+            /*  Grab a look-see on any metadata that was in there.          */
+            /* ------------------------------------------------------------ */
+            if (cfg->icart.rom.metadata)
+                meta = cfg->icart.rom.metadata;
+
+            lzoe_fclose(f);
+        }
     }
 
     /* -------------------------------------------------------------------- */
@@ -1598,6 +1668,44 @@ skip_ecs:;
         exit(1);
     }
 
+    if (fujinet_enable)
+    {
+        char *fn_host = NULL;
+        int   fn_port = 1985;
+
+        if (fujinet_target)
+        {
+            char *colon = strrchr(fujinet_target, ':');
+            if (colon)
+            {
+                *colon = 0;
+                fn_port = atoi(colon + 1);
+                if (fn_port <= 0 || fn_port > 65535)
+                    fn_port = 1985;
+            }
+            fn_host = strdup(fujinet_target[0] ? fujinet_target
+                                                : "localhost");
+        } else
+        {
+            fn_host = strdup("localhost");
+        }
+
+        if (fujinet_init(&cfg->fujinet, fn_host, fn_port, fujinet_debug,
+                         fujinet_bootdump, fujinet_bootdir,
+                         &cfg->icart, &cfg->cp1600,
+                         cfg->intv, cache_flags))
+        {
+            fprintf(stderr, "ERROR:  Failed to initialize FujiNet "
+                            "mailbox peripheral.\n");
+            CONDFREE(fn_host);
+            exit(1);
+        }
+        CONDFREE(fn_host);
+    }
+    CONDFREE(fujinet_target);
+    CONDFREE(fujinet_bootdump);
+    CONDFREE(fujinet_bootdir);
+
     if (gfx_init(&cfg->gfx, rx, ry, rd, cfg->gfx_flags, gfx_verbose,
                   cfg->prescale, bx, by, cfg->pal_mode, &cfg->avi,
                   cfg->audio_rate, &cfg->palette))
@@ -1884,6 +1992,18 @@ skip_ecs:;
     /* -------------------------------------------------------------------- */
     if (jlp_accel > 0)
         periph_register(P(jlp            ),  0x8000, 0x9FFF, "JLP Support"   );
+
+    /* -------------------------------------------------------------------- */
+    /*  If the FujiNet mailbox is enabled, install its register window at   */
+    /*  $9C00 - $9FFF (FUJINET_WINDOW_SIZE in fujinet.h; must match).  This  */
+    /*  overlaps the tail of the JLP RAM window above -- don't combine      */
+    /*  --jlp and --fujinet in the same session.                            */
+    /* -------------------------------------------------------------------- */
+    if (fujinet_enable)
+    {
+        periph_register(P(fujinet        ),  0x9C00, 0x9FFF, "FujiNet"       );
+        cp1600_cacheable(&cfg->cp1600, 0x9C00, 0x9FFF, 0);
+    }
 
     /* -------------------------------------------------------------------- */
     /*  Register the debugger.  This _must_ be done last.                   */

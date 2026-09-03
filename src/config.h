@@ -315,6 +315,7 @@
 # define CAN_TIOCGWINSZ
 # define CAN_SIGWINCH
 # define USE_TERMIO
+# define USE_SYS_IOCTL
 # if PLAT_LINUX == PLAT_LINUX_GP2X
 #  define FULLSC_START_DLY   (0)
 #  define SMALLMEM

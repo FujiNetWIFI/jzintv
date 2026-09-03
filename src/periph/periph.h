@@ -159,6 +159,28 @@ void periph_register
 );
 
 /* ======================================================================== */
+/*  PERIPH_UNREGISTER -- Drops a peripheral out of the bus' address decode  */
+/*                      bins.  The device stays on the bus' linked list,    */
+/*                      so it keeps ticking and still gets serialized and   */
+/*                      destructed; it just stops answering reads/writes    */
+/*                      until the next periph_register().                   */
+/*                                                                          */
+/*                      periph_register() only ever ORs a device into the   */
+/*                      decode bins, which is all a machine built once at   */
+/*                      startup ever needs.  The FujiNet peripheral, on the */
+/*                      other hand, re-registers the very same icart_t over */
+/*                      a brand new memory map when a pushed cart hot-swaps */
+/*                      the running one (see fujinet_apply_rom()), and the  */
+/*                      ranges the old map claimed would otherwise stay     */
+/*                      bound forever.                                      */
+/* ======================================================================== */
+void periph_unregister
+(
+    periph_bus_t    *bus,       /*  Peripheral bus to remove it from.   */
+    periph_t        *periph     /*  Peripheral being unregistered.      */
+);
+
+/* ======================================================================== */
 /*  PERIPH_READ      -- Perform a read on a peripheral bus as a CPU.        */
 /*  PERIPH_PEEK      -- Perform a read on a peripheral bus via backdoor.    */
 /* ======================================================================== */

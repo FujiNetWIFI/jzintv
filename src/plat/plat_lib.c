@@ -18,7 +18,7 @@
 #include "plat/plat_lib_config.h"
 
 #ifdef USE_TERMIO
-# include <termio.h>
+# include <termios.h>
 #endif
 
 #ifdef USE_SYS_IOCTL
