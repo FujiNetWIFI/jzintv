@@ -1,14 +1,15 @@
 #!/usr/bin/env bash
 #
-# build.sh - Build jzIntv for Linux, Windows and/or Sprint.
+# build.sh - Build jzIntv for Linux, Windows, armv7 and/or Sprint.
 #
 # Executables end up in bin/<platform>/ :
 #     bin/linux/jzintv
 #     bin/windows/jzintv.exe  (+ SDL2.dll, libwinpthread-1.dll)
 #     bin/sprint/jzintv        (+ update.zip)
+#     bin/linux-armhf/jzintv
 #
 # Usage:
-#     ./build.sh [linux|windows|sprint|all]      (default: all)
+#     ./build.sh [linux|windows|linux-armhf|sprint|all]   (default: all)
 #
 # Designed to be GENERIC (any Linux distro):
 #   * Linux   -> uses the system SDL2 via sdl2-config/pkg-config.  If the dev
@@ -23,6 +24,11 @@
 #                toolchain in PATH (native on Debian, or inside a Debian
 #                container on SteamOS) + libsdl2-dev:armhf + zip.  In 'all' it
 #                is skipped when the ARM toolchain is absent.
+#   * linux-armhf -> a PLAIN armv7 Linux build (same feature set as the
+#                'linux' target, just cross-compiled).  This is the one to
+#                ship to a Raspberry Pi or any other armhf box; 'sprint' is
+#                the Sprint-specific flavour and is not interchangeable.
+#                Same toolchain requirements as sprint, minus zip.
 #
 # Optional environment variables:
 #     CC, CXX            Linux compilers              (default gcc / g++)
@@ -31,6 +37,7 @@
 #     SDL2_VERSION       SDL2 version to download     (default 2.32.8)
 #     ARM_CROSS          ARM toolchain prefix         (default arm-linux-gnueabihf-)
 #     SPRINT_ZIP_TEMPLATE base update.zip for Sprint  (else build-support/../sprint)
+#     ARM_PKG_CONFIG_PATH armhf pkgconfig dir       (default /usr/lib/arm-linux-gnueabihf/pkgconfig)
 #     GNU_READLINE       1 to enable readline         (default 0)
 #     STRIP              0 to NOT strip               (default 1)
 #     JOBS               make parallelism             (default: nproc)
@@ -232,6 +239,51 @@ build_sprint() {
 }
 
 # ===========================================================================
+#  LINUX ARMHF  (plain armv7 cross-build -- NOT the Sprint flavour)
+# ===========================================================================
+build_linux_armhf() {
+    log "Build Linux armv7 (${ARM_CROSS}, release + LTO)"
+    local acc="${ARM_CROSS}gcc" acxx="${ARM_CROSS}g++" astrip="${ARM_CROSS}strip"
+    have "$acc"  || die "ARM cross-compiler '$acc' not found.  Install an armhf
+toolchain and SDL2:  dpkg --add-architecture armhf && apt update &&
+apt install -y crossbuild-essential-armhf libsdl2-dev:armhf"
+    have "$acxx" || die "'$acxx' not found"
+    have make    || die "'make' not found"
+
+    # Makefile.linux_sdl2 finds SDL2 with sdl2-config, which would answer for
+    # the HOST.  Resolve the armhf SDL2 through pkg-config instead and hand the
+    # result to make, overriding the Makefile's own := assignments.
+    local pcp="${ARM_PKG_CONFIG_PATH:-/usr/lib/arm-linux-gnueabihf/pkgconfig}"
+    have pkg-config || die "'pkg-config' is required to locate SDL2 for armhf"
+    PKG_CONFIG_PATH="$pcp" pkg-config --exists sdl2 2>/dev/null \
+        || die "SDL2 for armhf not found in $pcp.  Install libsdl2-dev:armhf, or
+point \$ARM_PKG_CONFIG_PATH at the right pkgconfig directory."
+    local acflags alflags
+    acflags="$(PKG_CONFIG_PATH="$pcp" pkg-config --cflags sdl2) -DUSE_SDL=2"
+    alflags="$(PKG_CONFIG_PATH="$pcp" pkg-config --libs sdl2)"
+    ok "SDL2 armhf: $(PKG_CONFIG_PATH="$pcp" pkg-config --modversion sdl2)"
+
+    clean_objs
+    mkdir -p "$BIN"                       # the Makefile links into ../bin/: it must exist
+    # GNU_READLINE is off: readline:armhf is rarely installed alongside the
+    # cross toolchain, and the emulator does not need it.
+    ( cd "$SRC" && rm -f ../bin/jzintv && \
+      make -f Makefile.linux_sdl2 \
+           CC="$acc -std=gnu99" \
+           CXX="$acxx -std=c++14" \
+           SDL2_CFLAGS="$acflags" \
+           SDL2_LFLAGS="$alflags" \
+           GNU_READLINE=0 SVN_REV=0 SVN_DTY=0 \
+           -j"$JOBS" ../bin/jzintv )
+    [ -f "$BIN/jzintv" ] || die "armv7 build failed (no bin/jzintv)"
+    mkdir -p "$BIN/linux-armhf"
+    mv -f "$BIN/jzintv" "$BIN/linux-armhf/jzintv"
+    [ "$STRIP" = "1" ] && "$astrip" --strip-unneeded "$BIN/linux-armhf/jzintv"
+    clean_objs
+    ok "-> bin/linux-armhf/jzintv  ($(du -h "$BIN/linux-armhf/jzintv" | cut -f1))"
+}
+
+# ===========================================================================
 #  MAIN
 # ===========================================================================
 rc=0
@@ -239,16 +291,17 @@ case "$TARGET" in
     linux)   build_linux ;;
     windows) build_windows ;;
     sprint)  build_sprint ;;
+    linux-armhf|armhf|armv7) build_linux_armhf ;;
     all)
         # In 'all', a target whose toolchain is missing is skipped, not fatal.
         build_linux || rc=1
         if have "${MINGW}-gcc"; then build_windows || rc=1
         else warn "MinGW-w64 (${MINGW}-gcc) not found: skipping Windows"; fi
-        if have "${ARM_CROSS}gcc"; then build_sprint || rc=1
-        else warn "ARM toolchain (${ARM_CROSS}gcc) not found: skipping Sprint"; fi
+        if have "${ARM_CROSS}gcc"; then build_linux_armhf || rc=1; build_sprint || rc=1
+        else warn "ARM toolchain (${ARM_CROSS}gcc) not found: skipping armv7 and Sprint"; fi
         ;;
-    -h|--help|help) sed -n '2,38p' "$0"; exit 0 ;;
-    *) die "unknown target: '$TARGET' (use: linux | windows | sprint | all)";;
+    -h|--help|help) sed -n '2,45p' "$0"; exit 0 ;;
+    *) die "unknown target: '$TARGET' (use: linux | windows | linux-armhf | sprint | all)";;
 esac
 
 log "Contents of bin/:"
