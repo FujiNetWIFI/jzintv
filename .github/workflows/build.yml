@@ -1,0 +1,139 @@
+# -*- indent-tabs-mode: nil; -*-
+
+name: Build jzIntv + FujiNet
+
+on:
+  push:
+    branches:
+      - "**"
+    tags:
+      - "v*"
+  pull_request:
+    branches:
+      - "**"
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: ${{ matrix.os.name }}
+    runs-on: ${{ matrix.os.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - name: Linux x86-64
+            runner: ubuntu-22.04
+            target: linux-x86_64
+            build: linux
+            outdir: linux
+            # ELF machine that `file` must report, so a mislabelled artifact
+            # cannot silently ship.
+            arch: x86-64
+          - name: Linux ARM64
+            runner: ubuntu-22.04-arm
+            target: linux-arm64
+            build: linux
+            outdir: linux
+            arch: ARM aarch64
+          - name: Linux armv7
+            runner: ubuntu-22.04-arm
+            target: linux-armv7
+            build: linux-armhf
+            outdir: linux-armhf
+            arch: ARM, EABI5
+            cross: armhf
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    - name: Install build dependencies
+      run: |
+        sudo apt-get update -q
+        sudo apt-get install -y --no-install-recommends build-essential pkg-config file
+
+    - name: Install SDL2 (native)
+      if: ${{ !matrix.os.cross }}
+      run: sudo apt-get install -y --no-install-recommends libsdl2-dev
+
+    # ubuntu-*-arm runners already point at ports.ubuntu.com, which carries
+    # armhf alongside arm64, so multiarch needs no sources.list surgery.
+    - name: Install armhf cross toolchain and SDL2
+      if: ${{ matrix.os.cross == 'armhf' }}
+      run: |
+        sudo dpkg --add-architecture armhf
+        sudo apt-get update -q
+        sudo apt-get install -y --no-install-recommends \
+          crossbuild-essential-armhf libsdl2-dev:armhf
+
+    - name: Build
+      run: ./build.sh ${{ matrix.os.build }}
+
+    - name: Verify the binary is really ${{ matrix.os.target }}
+      run: |
+        BIN=bin/${{ matrix.os.outdir }}/jzintv
+        file "$BIN"
+        file "$BIN" | grep -q '${{ matrix.os.arch }}' \
+          || { echo "::error::$BIN is not ${{ matrix.os.arch }}"; exit 1; }
+
+    # The armv7 binary is cross-built, so it cannot run here.
+    - name: Smoke test
+      if: ${{ !matrix.os.cross }}
+      run: |
+        BIN=bin/${{ matrix.os.outdir }}/jzintv
+        "$BIN" --help > /dev/null
+        "$BIN" --help | grep -q -- '--fujinet' \
+          || { echo "::error::FujiNet support missing from this build"; exit 1; }
+
+    - name: Package
+      id: pkg
+      run: |
+        if [ "${GITHUB_REF_TYPE}" = "tag" ]; then VER="${GITHUB_REF_NAME}";
+        else VER="$(git rev-parse --short HEAD)"; fi
+        NAME="jzintv-fujinet-${VER}-${{ matrix.os.target }}"
+        mkdir -p "dist/$NAME"
+        cp bin/${{ matrix.os.outdir }}/jzintv "dist/$NAME/"
+        cp README.md COPYING.txt ReleaseNotes_FujiNet.txt ReleaseNotes_20200822.txt "dist/$NAME/"
+        cp -r examples/fujinet "dist/$NAME/examples-fujinet"
+        tar -czf "dist/${NAME}.tar.gz" -C dist "$NAME"
+        echo "name=$NAME" >> "$GITHUB_OUTPUT"
+
+    - name: Upload build artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: ${{ steps.pkg.outputs.name }}
+        path: dist/${{ steps.pkg.outputs.name }}.tar.gz
+
+  release:
+    name: Release
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+    - name: Download build artifacts
+      uses: actions/download-artifact@v4
+      with:
+        path: release
+
+    - name: Show what we are about to publish
+      run: ls -lR release
+
+    - name: Publish release
+      uses: softprops/action-gh-release@v2
+      with:
+        name: "jzIntv + FujiNet ${{ github.ref_name }}"
+        tag_name: ${{ github.ref_name }}
+        draft: true
+        body: |
+          jzIntv ${{ github.ref_name }} with FujiNet mailbox peripheral support,
+          based on upstream jzIntv 2020-08-22 (SVN r2141).
+
+          Linux builds for x86-64, ARM64 and armv7 (hard-float).  These link
+          against the system SDL2, so install your distribution's SDL2 runtime
+          (Debian/Ubuntu: `libsdl2-2.0-0`) before running.
+
+          Built on Ubuntu 22.04, so glibc 2.35 or newer is required.
+        files: release/*/*.tar.gz
