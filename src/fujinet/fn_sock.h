@@ -103,6 +103,17 @@ void fn_sock_close(fn_sock_t *const sock);
 /* ======================================================================== */
 int fn_sock_connected(const fn_sock_t *const sock);
 
+/* ======================================================================== */
+/*  FN_SOCK_SET_TRACE -- Installs a tap on every byte this module moves:    */
+/*                       dir 1 for what fn_sock_send() wrote, dir 0 for     */
+/*                       what fn_sock_recv() read.  It runs on the caller's */
+/*                       thread, inside the send/recv call.  One process-   */
+/*                       wide tap; set it before the machine starts.  NULL  */
+/*                       removes it.                                        */
+/* ======================================================================== */
+typedef void (*fn_sock_trace_t)(int dir, const uint8_t *buf, size_t len);
+void fn_sock_set_trace(fn_sock_trace_t cb);
+
 #endif /* FN_SOCK_H_ */
 /* ======================================================================== */
 /*  This program is free software; you can redistribute it and/or modify    */

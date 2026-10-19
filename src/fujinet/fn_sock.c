@@ -15,6 +15,16 @@
 #  endif
 #endif
 
+LOCAL fn_sock_trace_t fn_sock_trace = NULL;
+
+/* ======================================================================== */
+/*  FN_SOCK_SET_TRACE -- Installs the byte tap.  See fn_sock.h.             */
+/* ======================================================================== */
+void fn_sock_set_trace(fn_sock_trace_t cb)
+{
+    fn_sock_trace = cb;
+}
+
 /* ======================================================================== */
 /*  FN_SOCK_LAST_ERR  -- Portable "would this call have blocked?" check.    */
 /* ======================================================================== */
@@ -262,7 +272,11 @@ int fn_sock_send(fn_sock_t *const sock, const uint8_t *const buf,
 #endif
 
     if (n >= 0)
+    {
+        if (n > 0 && fn_sock_trace)
+            fn_sock_trace(1, buf, (size_t)n);
         return n;
+    }
 
     if (fn_sock_would_block())
         return 0;
@@ -294,7 +308,11 @@ int fn_sock_recv(fn_sock_t *const sock, uint8_t *const buf,
 #endif
 
     if (n > 0)
+    {
+        if (fn_sock_trace)
+            fn_sock_trace(0, buf, (size_t)n);
         return n;
+    }
 
     if (n == 0)
     {
