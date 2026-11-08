@@ -58,9 +58,11 @@ directory browsing, etc. -- works inside the emulator.
                 sibling was pushed, PREFIX.cfg.
 ```
 
-> **Note:** the FujiNet mailbox window ($9C00-$9FFF) overlaps the tail of
-> the JLP RAM window, so `--jlp` and `--fujinet` should not be combined in
-> the same session.
+> **JLP:** the mailbox ($9C00-$9F3F) sits inside JLP's window, as on the
+> cart. A JLP game keeps it only if its `.cfg` has `[vars] fujinet = 1`;
+> JLP then stands aside on those addresses. Without the opt-in the mailbox
+> is off for that game. Use the `.bin` + `.cfg`: a `.rom` can't carry the
+> opt-in.
 
 ### Quick start
 

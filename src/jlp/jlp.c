@@ -34,6 +34,9 @@
 
 #define JLP_CRC_POLY (0xAD52)
 
+#define JLP_IN_MB_HOLE(jlp, addr) \
+    ((jlp)->mb_hole && (addr) >= JLP_MB_HOLE_LO && (addr) <= JLP_MB_HOLE_HI)
+
 static int jlp_accel_on_reset = 0;
 int jlp_accel_on = 0;
 int lto_isa_enabled = 0;
@@ -49,8 +52,11 @@ LOCAL int jlp_sg_validate_args(jlp_t *const jlp, const int check_addr)
     const uint32_t max_row = jlp->sg_end;
 
     const int have_flash = jlp->sg_img && jlp->sg_bytes;
-    const int addr_ok = (check_addr == 0 || 
-                         (addr >= 0x8040 && addr + 95 <= 0x9F7F));
+    const int addr_ok = (check_addr == 0 ||
+                         ((addr >= 0x8040 && addr + 95 <= 0x9F7F) &&
+                          !(jlp->mb_hole &&
+                            addr + 95 >= 0x8000 + JLP_MB_HOLE_LO &&
+                            addr <= 0x8000 + JLP_MB_HOLE_HI)));
     const int row_ok = (row >= min_row) && (row <= max_row);
 
     if (have_flash && addr_ok && row_ok)
@@ -169,6 +175,7 @@ LOCAL uint32_t jlp_read(periph_t *const per, periph_t *ign,
 
     UNUSED(ign); UNUSED(data);
 
+    if (JLP_IN_MB_HOLE(jlp, addr)) { return ~0u;        }
     if (jlp->sleep > 0) { jlp->sleep--; return ~0u;     }
     if (!jlp_accel_on)  { return ~0u;                   }
     if (addr >= 0x1F90 && addr <= 0x1F9F) { return jlp->xreg[addr & 0xF]; }
@@ -188,6 +195,7 @@ LOCAL uint32_t jlp_peek(periph_t *const per, periph_t *ign,
     UNUSED(ign);
     UNUSED(data);
 
+    if (JLP_IN_MB_HOLE(jlp, addr)) { return ~0u;        }
     if (!jlp_accel_on)  { return ~0u;                   }
     if (addr >= 0x1F90 && addr <= 0x1F9F) { return jlp->xreg[addr & 0xF]; }
     if (addr == 0x1FFE) { return rand_jz() >> 16;       }
@@ -204,6 +212,8 @@ LOCAL void jlp_write(periph_t *const per, periph_t *ign,
     jlp_t *const jlp = PERIPH_AS(jlp_t, per);
 
     UNUSED(ign);
+
+    if (JLP_IN_MB_HOLE(jlp, addr)) { return; }
 
     if (jlp->sleep == 0 && !jlp_accel_on && addr == 0x33 && data == 0x4A5A)
     {

@@ -18,7 +18,19 @@ typedef struct jlp_t
     uint16_t    sg_start;   /* Initial flash row                            */
     uint16_t    sg_end;     /* Final flash row                              */
     uint32_t    sg_bytes;   /* Total size in bytes                          */
+    int         mb_hole;    /* FujiNet mailbox owns $9C00-$9F3F; see below  */
 } jlp_t;
+
+/* ------------------------------------------------------------------------ */
+/*  A FujiNet cartridge serves its mailbox from inside JLP's window, at     */
+/*  $9C00-$9F3F.  When a JLP game opts in with [vars] fujinet = 1, the      */
+/*  mailbox answers there and JLP stands aside: reads return ~0 (the AND    */
+/*  identity on jzIntv's shared bus) and writes are dropped.  Flash         */
+/*  commands whose 96-word RAM span touches the hole are refused, as the    */
+/*  cart refuses them.  JLP RAM below and above the hole is unaffected.     */
+/* ------------------------------------------------------------------------ */
+#define JLP_MB_HOLE_LO  (0x1C00)    /* $9C00 as an offset into JLP's window */
+#define JLP_MB_HOLE_HI  (0x1F3F)    /* $9F3F                                */
 
 
 /* Approximate numbers for a 256K board and ~20Kw game. */

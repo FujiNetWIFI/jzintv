@@ -665,14 +665,13 @@ LOCAL void fujinet_retire_cart(fujinet_t *const fn)
 /*                       in its .cfg [vars], the same way cfg.c does for a  */
 /*                       command-line --jlp.                                */
 /*                                                                          */
-/*  JLP claims $8000-$9FFF whole, which swallows the mailbox window -- so   */
-/*  the caller disables the mailbox for the session, exactly as it does for */
-/*  a cart whose own segments cover it.  The RP2040 rejects this            */
-/*  combination outright (FUJI_BOOT_ERR_MAILBOX) because it has one RAM     */
-/*  window to hand out; jzIntv can simply stop answering there and let JLP  */
-/*  have it.                                                                */
+/*  JLP claims $8000-$9FFF, which contains the mailbox.  On the cart        */
+/*  (apply_boot_mapping()) a JLP title keeps the mailbox only if its .cfg   */
+/*  also says fujinet = 1; keep_mailbox carries that, and JLP then stands   */
+/*  aside on $9C00-$9F3F.  Otherwise the caller turns the mailbox off.      */
 /* ======================================================================== */
-LOCAL int fujinet_apply_jlp(fujinet_t *const fn, int jlp_accel, int jlp_flash)
+LOCAL int fujinet_apply_jlp(fujinet_t *const fn, int jlp_accel, int jlp_flash,
+                            int keep_mailbox)
 {
     jlp_t *jlp = (jlp_t *)fn->jlp;
     char   sgpath[512];
@@ -714,6 +713,7 @@ LOCAL int fujinet_apply_jlp(fujinet_t *const fn, int jlp_accel, int jlp_flash)
     if (jlp_init(jlp, sgpath, &((cp1600_t *)fn->cpu)->xr[0],
                  jlp_accel, jlp_flash, 0))
         return -1;
+    jlp->mb_hole = keep_mailbox;
 
     if (!fn->jlp_registered)
     {
@@ -722,8 +722,8 @@ LOCAL int fujinet_apply_jlp(fujinet_t *const fn, int jlp_accel, int jlp_flash)
     }
 
     if (fn->debug)
-        jzp_printf("FUJINET: JLP accel=%d flash=%d savegame=%s\n",
-                   jlp_accel, jlp_flash, sgpath);
+        jzp_printf("FUJINET: JLP accel=%d flash=%d savegame=%s mailbox=%s\n",
+                   jlp_accel, jlp_flash, sgpath, keep_mailbox ? "kept" : "off");
 
     return 0;
 }
@@ -764,7 +764,7 @@ LOCAL int fujinet_apply_bincfg(fujinet_t *const fn, int *const disable_mb)
 {
     char      binpath[512], cfgpath[512];
     legacy_t *l;
-    int       jlp_accel = 0, jlp_flash = 0;
+    int       jlp_accel = 0, jlp_flash = 0, fujinet_var = 0;
 
     snprintf(binpath, sizeof(binpath), "%s%cjzintv-fnboot.bin",
              fn->bootstage_dir, PATH_SEP);
@@ -807,9 +807,20 @@ LOCAL int fujinet_apply_bincfg(fujinet_t *const fn, int *const disable_mb)
     /* -------------------------------------------------------------------- */
     jlp_accel = l->jlp_accel;
     if (l->bc && l->bc->metadata)
-        jlp_flash = l->bc->metadata->jlp_flash;
+    {
+        jlp_flash   = l->bc->metadata->jlp_flash;
+        fujinet_var = game_metadata_misc_int(l->bc->metadata, "fujinet", 0);
+    }
 
-    if (l->bc)
+    if (jlp_accel > 0)
+    {
+        /*  JLP's window is $8000-$9FFF and contains the mailbox; the cart  */
+        /*  keeps the mailbox there only for a title that opts in.  Cart    */
+        /*  ROM under the window is JLP's problem (legacy.c hides it while  */
+        /*  JLP is on), not a reason to drop the mailbox.                   */
+        if (!fujinet_var)
+            *disable_mb = 1;
+    } else if (l->bc)
     {
         const bc_memspan_t *span;
         for (span = l->bc->span; span; span = (const bc_memspan_t *)span->l.next)
@@ -817,10 +828,6 @@ LOCAL int fujinet_apply_bincfg(fujinet_t *const fn, int *const disable_mb)
                                         span->e_addr - span->s_addr + 1))
                 *disable_mb = 1;
     }
-
-    /*  JLP's window is $8000-$9FFF, which contains the mailbox outright.    */
-    if (jlp_accel > 0)
-        *disable_mb = 1;
 
     /* -------------------------------------------------------------------- */
     /*  Commit.  Past this point the old cart is gone, so nothing below may  */
@@ -834,7 +841,8 @@ LOCAL int fujinet_apply_bincfg(fujinet_t *const fn, int *const disable_mb)
     fujinet_recacheable_console(fn);
     fn->legacy = l;
 
-    if (jlp_accel > 0 && fujinet_apply_jlp(fn, jlp_accel, jlp_flash))
+    if (jlp_accel > 0 &&
+        fujinet_apply_jlp(fn, jlp_accel, jlp_flash, !*disable_mb))
         fprintf(stderr, "FUJINET: JLP setup failed; the cart will run "
                         "without it\n");
 
@@ -1250,6 +1258,11 @@ LOCAL void fujinet_rx_resync(fujinet_t *const fn)
 LOCAL uint32_t fujinet_tick(periph_t *const per, uint32_t len)
 {
     fujinet_t *const fn = PERIPH_AS(fujinet_t, per);
+
+    /*  The cart rewrites LINK on every service pass, so a program can tell */
+    /*  a live mailbox from plain RAM even after it cleared the header.     */
+    if (fn->mailbox_active)
+        fn->ram[OFS(FUJI_MB_LINK)] = fn->state >= FUJINET_ST_IDLE;
 
     switch (fn->state)
     {

@@ -81,6 +81,36 @@ int game_metadata_set_unspec_compat_to_defaults
 }
 
 /* ------------------------------------------------------------------------ */
+/*  GAME_METADATA_MISC_INT   -- Integer value of an un-handled [vars] key.  */
+/* ------------------------------------------------------------------------ */
+int game_metadata_misc_int
+(
+    const game_metadata_t *const meta,
+    const char            *const name,
+    const int                    dflt
+)
+{
+    int idx;
+
+    if ( !meta || !meta->misc || !name ) return dflt;
+
+    for ( idx = 0; meta->misc[idx]; idx++ )
+    {
+        const char *misc = meta->misc[idx];
+        const char *want = name;
+
+        while ( *want && tolower( (unsigned char)*misc ) == *want )
+        {
+            misc++;
+            want++;
+        }
+        if ( !*want && *misc == '=' )
+            return atoi( misc + 1 );
+    }
+    return dflt;
+}
+
+/* ------------------------------------------------------------------------ */
 /*  DEFAULT_GAME_METADATA                                                   */
 /* ------------------------------------------------------------------------ */
 game_metadata_t *default_game_metadata( void )
