@@ -45,8 +45,8 @@ typedef enum
  * divides FUJI_MB_ADDR_LO ($9C00 = 0x400 * 39), since fujinet_read()/
  * fujinet_write() recover the ram[] index with addr & (WINDOW_SIZE - 1) --
  * 0x400 is the largest such power of 2 that still covers the mailbox's own
- * footprint (0x340 words, $9C00-$9F3F); the remaining $9F40-$9FFF is
- * unused slack, same as the old $9800-based window had past $9F3F.
+ * footprint (0x340 words, $9C00-$9F3F). cfg.c registers only $9C00-$9F3F:
+ * $9F40-$9FFF is JLP RAM and JLP's accelerators, as on the cart.
  */
 #define FUJINET_WINDOW_SIZE  0x0400
 
@@ -161,7 +161,8 @@ typedef struct fujinet_t
 
     /*  Session flag mirroring the RP2040's cart.MailboxActive: cleared    */
     /*  when a booted game's map covers the mailbox window (such a game    */
-    /*  can't be fuji-aware). While clear, reads return ~0 (AND-identity   */
+    /*  can't be fuji-aware), or for a JLP game whose .cfg lacks           */
+    /*  [vars] fujinet = 1. While clear, reads return ~0 (AND-identity     */
     /*  on jzIntv's shared bus) and writes are dropped, so the game's own  */
     /*  ROM at $9C00-$9FFF reads through cleanly. Restored only by a       */
     /*  session restart (fujinet_init), matching the power-cycle watchdog  */

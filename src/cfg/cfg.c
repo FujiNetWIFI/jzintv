@@ -580,6 +580,8 @@ void cfg_init(cfg_t *cfg, int argc, char * argv_orig[])
     int fujinet_enable      = 0;
     int fujinet_debug       = 0;
     int fujinet_use_config_rom = 0;
+    int fujinet_jlp         = 0;    /*  [vars] fujinet = 1: JLP game that  */
+                                    /*  keeps the mailbox.                 */
     char *fujinet_target    = NULL;
     char *fujinet_bootdump  = NULL;
     char *fujinet_bootdir   = NULL;
@@ -1413,6 +1415,7 @@ locutus_loaded:
 
         if (jlp_accel == -1) jlp_accel = meta->jlp_accel;
         if (jlp_flash == -1) jlp_flash = meta->jlp_flash;
+        fujinet_jlp = game_metadata_misc_int(meta, "fujinet", 0);
 
         print_metadata(meta);
 
@@ -1701,6 +1704,19 @@ skip_ecs:;
             exit(1);
         }
         CONDFREE(fn_host);
+
+        /*  A JLP game shares $8000-$9FFF with the mailbox.  As on the cart */
+        /*  (fujinet-firmware's apply_boot_mapping()), the mailbox stays    */
+        /*  only if the game's .cfg opts in with [vars] fujinet = 1, and    */
+        /*  JLP then stands aside on $9C00-$9F3F.  Without it the mailbox   */
+        /*  is off and JLP keeps its whole window.                          */
+        if (jlp_accel > 0)
+        {
+            if (fujinet_jlp)
+                cfg->jlp.mb_hole = 1;
+            else
+                cfg->fujinet.mailbox_active = 0;
+        }
     }
     CONDFREE(fujinet_target);
     CONDFREE(fujinet_bootdump);
@@ -1994,15 +2010,16 @@ skip_ecs:;
         periph_register(P(jlp            ),  0x8000, 0x9FFF, "JLP Support"   );
 
     /* -------------------------------------------------------------------- */
-    /*  If the FujiNet mailbox is enabled, install its register window at   */
-    /*  $9C00 - $9FFF (FUJINET_WINDOW_SIZE in fujinet.h; must match).  This  */
-    /*  overlaps the tail of the JLP RAM window above -- don't combine      */
-    /*  --jlp and --fujinet in the same session.                            */
+    /*  If the FujiNet mailbox is enabled, install it at $9C00 - $9F3F      */
+    /*  (FUJI_MB_ADDR_LO..HI in fuji_mailbox.h), inside JLP's window as on  */
+    /*  the cart.  JLP RAM above it ($9F40-$9F7F) and the accelerators      */
+    /*  ($9F80-$9FFF) stay JLP's alone.  Who answers $9C00-$9F3F for a JLP  */
+    /*  game is decided after fujinet_init() above.                         */
     /* -------------------------------------------------------------------- */
     if (fujinet_enable)
     {
-        periph_register(P(fujinet        ),  0x9C00, 0x9FFF, "FujiNet"       );
-        cp1600_cacheable(&cfg->cp1600, 0x9C00, 0x9FFF, 0);
+        periph_register(P(fujinet        ),  0x9C00, 0x9F3F, "FujiNet"       );
+        cp1600_cacheable(&cfg->cp1600, 0x9C00, 0x9F3F, 0);
     }
 
     /* -------------------------------------------------------------------- */

@@ -3,6 +3,29 @@ Based on upstream jzIntv 20200822 (SVN r2141).  See ReleaseNotes_20200822.txt
 and earlier ReleaseNotes_*.txt files for the upstream emulator's history.
 
 ------------------------------------------
+ JLP and the mailbox share $8000-$9FFF:
+------------------------------------------
+
+The FujiNet peripheral was registered over $9C00-$9FFF on top of JLP's
+$8000-$9FFF.  The bus ANDs every reader of an address, so with both on the
+mailbox handshake never completed and JLP's multiply/divide, CRC and
+random-number registers read zero.  Now jzIntv does what the cart does:
+
+*   The mailbox answers $9C00-$9F3F only.  $9F40-$9FFF is JLP's.
+*   A JLP game keeps the mailbox only if its .cfg has [vars] fujinet = 1,
+    whether it is loaded from the command line or pushed by FujiNet.  JLP
+    then stands aside on $9C00-$9F3F, and a flash command whose RAM span
+    touches it is refused.  Without the opt-in the mailbox is off and JLP
+    keeps its whole window.  A .rom carries no such var, so as on the cart
+    the opt-in needs a .bin + .cfg.
+*   LINK is rewritten on every tick, as the cart rewrites it on every
+    service pass.
+
+Files: cfg/cfg.c, cfg/usage.c, fujinet/fujinet.c, fujinet/fujinet.h,
+jlp/jlp.c, jlp/jlp.h, metadata/metadata.c, metadata/metadata.h.  Checked
+with the JLP + FujiNet test ROM (FujiNetWIFI/fujinet-intv-jlp-test).
+
+------------------------------------------
  Rebased onto upstream jzIntv 20200822:
 ------------------------------------------
 
@@ -283,7 +306,8 @@ only exists in the emulator:
         $9C00-$9FFF, and boot-from-config-ROM handling.
     *   Note: the FujiNet mailbox window overlaps the tail of the JLP RAM
         window, so --jlp and --fujinet should not be combined in the same
-        session.
+        session.  (No longer true; see "JLP and the mailbox share
+        $8000-$9FFF" above.)
 *   icart/icart.c, icart/icart.h
     *   Support for loading a cart from an in-memory buffer, used both by
         the embedded config ROM and by DBC-pushed cart reloads.

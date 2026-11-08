@@ -172,6 +172,19 @@ game_metadata_t *merge_game_metadata
 );
     
 /* ------------------------------------------------------------------------ */
+/*  GAME_METADATA_MISC_INT   -- Integer value of a [vars] key that has no   */
+/*                              field of its own (it lands in misc[] as     */
+/*                              "name=value"), or dflt if it isn't there.   */
+/*                              FujiNet's "fujinet" opt-in is read this way.*/
+/* ------------------------------------------------------------------------ */
+int game_metadata_misc_int
+(
+    const game_metadata_t *const meta,
+    const char            *const name,
+    const int                    dflt
+);
+
+/* ------------------------------------------------------------------------ */
 /*  PRINT_METADATA   -- Print game metadata.                                */
 /* ------------------------------------------------------------------------ */
 void print_metadata

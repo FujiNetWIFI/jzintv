@@ -4,7 +4,7 @@ fujitest.bas / fujitest.rom demonstrate jzIntv's --fujinet peripheral, which
 emulates the RP2040 side of the FujiNet-for-Intellivision bridge from
 fujinet-firmware/pico/intellivision/ -- see src/fujinet/fujinet.h for the
 implementation.  It presents the same "mailbox" register window at
-$9C00-$9FFF that real RP2040 hardware does, but instead of relaying
+$9C00-$9F3F that real RP2040 hardware does, but instead of relaying
 transactions to a FujiNet over USB CDC, it speaks the same FujiBus wire
 protocol over a TCP socket to fujinet-firmware's "Bus Over IP" (BoIP)
 feature.
@@ -48,10 +48,10 @@ JZINTV-SPECIFIC CHANGE FROM THE UPSTREAM ROM
 The upstream ROM declares the full $8000-$9FFF as RAM via
 "ASM MEMATTR $8000, $9FFF, "+RWN"", because on real hardware the RP2040
 maps that entire window as physical RAM (the mailbox cells are just
-polled cells within it).  jzIntv instead models $9C00-$9FFF as its own
+polled cells within it).  jzIntv instead models $9C00-$9F3F as its own
 FujiNet peripheral -- registered separately from, and behaving just like,
 the cartridge's RAM for that range -- so this copy declares RAM only for
-$8000-$9BFF and leaves $9C00-$9FFF to --fujinet.  Declaring RAM over both
+$8000-$9BFF and leaves $9C00-$9F3F to --fujinet.  Declaring RAM over both
 ranges would register two peripherals over the same addresses; jzIntv's
 periph_read() ANDs together every reader in a bin, so the FujiNet
 peripheral's magic-byte and ACKSEQ cells would get corrupted by the cart
